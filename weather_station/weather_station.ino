@@ -3,11 +3,20 @@
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
+// #include <PubSubClient.h>
+#include <DHT.h>
 
 ESP8266WebServer webServer(80);
 
+#define DHTPIN D4
+#define DHTTYPE DHT22
+
+// credentials: ssid, password
 String s;
 String p;
+
+
+DHT dht(DHTPIN, DHTTYPE);
 
 bool saveWiFiCredentials() {
 
@@ -213,9 +222,37 @@ void setup() {
     connectWiFi();
   }
 
+  dht.begin();
+}
+
+
+unsigned long prevMs = 0;
+const unsigned long READ_SENSORS_INTERVAL = 2000 * 60;
+
+void readSensors() {
+  unsigned long currMs = millis();
+  if (currMs - prevMs > READ_SENSORS_INTERVAL) {
+    prevMs = currMs;
+
+    float h = dht.readHumidity();
+    if (isnan(h)) {
+      Serial.println("Could not read humidity from DHT22!");
+      return;
+    }
+    float t = dht.readTemperature();
+    if (isnan(t)) {
+      Serial.println("Could not read temperature from DHT22!");
+      return;
+    }
+    Serial.print("humidity: ");
+    Serial.println(h);
+    Serial.print("temperature: ");
+    Serial.println(t);
+  }
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
+  readSensors();
 
 }

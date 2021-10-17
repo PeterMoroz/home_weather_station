@@ -3,10 +3,12 @@
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
-// #include <PubSubClient.h>
+#include <PubSubClient.h>
 #include <DHT.h>
 
 ESP8266WebServer webServer(80);
+WiFiClient wifiClient;
+PubSubClient mqttClient(wifiClient);
 
 #define DHTPIN D4
 #define DHTTYPE DHT22
@@ -14,6 +16,9 @@ ESP8266WebServer webServer(80);
 // credentials: ssid, password
 String s;
 String p;
+
+// TO DO: store in EEPROM at initial startup
+const char* MQTT_BROKER_IP = "192.168.0.105";
 
 
 DHT dht(DHTPIN, DHTTYPE);
@@ -166,7 +171,6 @@ bool checkWiFiCredentials() {
   Serial.print("password: ");
   Serial.println(pass);
 
-  // return (ssid.length() > 0 && pass.length() > 0);
   if (ssid.length() > 0 && pass.length() > 0) {
     s = ssid;
     p = pass;
@@ -209,6 +213,36 @@ void connectWiFi() {
   Serial.println(WiFi.localIP());
 }
 
+void reconnectMQTT() {
+  // loop untill succeeded
+  while (!mqttClient.connected()) {
+    Serial.print("Connecting to MQTT broker ... ");
+    if (mqttClient.connect("ESP8266")) {
+      Serial.println(" CONNECTED.");
+      mqttClient.subscribe("esp8266/4");
+      mqttClient.subscribe("esp8266/5");
+    } else {
+      Serial.print(" FAILED! error: ");
+      Serial.print(mqttClient.state());
+      Serial.println(" Try again in 5 seconds.");
+      // wait for 5 seconds before retrying
+      delay(5000);
+    }
+  }
+}
+
+void onMessageReceived(String topic, byte* message, unsigned int length) {
+  Serial.print("Message arrived on topic: ");
+  Serial.print(topic);
+  Serial.print(" Message: ");
+
+  unsigned int i = 0;
+  for (; i < length; i++) {
+    Serial.print((char)message[i]);    
+  }
+  Serial.println();
+}
+
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
@@ -223,13 +257,16 @@ void setup() {
   }
 
   dht.begin();
+  mqttClient.setServer(MQTT_BROKER_IP, 1883);
+  mqttClient.setCallback(onMessageReceived);
 }
 
 
 unsigned long prevMs = 0;
-const unsigned long READ_SENSORS_INTERVAL = 2000 * 60;
+const unsigned long READ_SENSORS_INTERVAL = 10000;
 
 void readSensors() {
+  // TO DO: measure how long does it take to read the sensor's data
   unsigned long currMs = millis();
   if (currMs - prevMs > READ_SENSORS_INTERVAL) {
     prevMs = currMs;
@@ -245,14 +282,27 @@ void readSensors() {
       return;
     }
     Serial.print("humidity: ");
-    Serial.println(h);
-    Serial.print("temperature: ");
+    Serial.print(h);
+    Serial.print(" temperature: ");
     Serial.println(t);
+
+    char strHumidity[8];
+    dtostrf(h, 6, 2, strHumidity);
+    char strTemperature[8];
+    dtostrf(t, 6, 2, strTemperature);
+
+    mqttClient.publish("/esp8266/humidity", strHumidity);
+    mqttClient.publish("/esp8266/temperature", strTemperature);
   }
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
+
+  if (!mqttClient.connected()) {
+    reconnectMQTT();
+  }
+  
   readSensors();
 
 }

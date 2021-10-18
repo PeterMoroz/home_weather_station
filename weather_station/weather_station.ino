@@ -17,8 +17,12 @@ PubSubClient mqttClient(wifiClient);
 String s;
 String p;
 
+// sensors data
+float h = 0.f, t = 0.f;
+
 // TO DO: store in EEPROM at initial startup
-const char* MQTT_BROKER_IP = "192.168.0.105";
+// const char* MQTT_BROKER_IP = "192.168.0.105";
+const char* MQTT_BROKER_ADDR = "public.mqtthq.com";
 
 
 DHT dht(DHTPIN, DHTTYPE);
@@ -117,6 +121,7 @@ const char INDEX_HTML[] =
 "</body>"
 "</html>";
 
+
 void handleRoot() {
   if (webServer.hasArg("ssid") && webServer.hasArg("password")) {
     handleSubmit();
@@ -137,6 +142,64 @@ void handleNotFound() {
     msg += " " + webServer.argName(i) + ": " + webServer.arg(i) + "\n";
   }
   webServer.send(404, "text/plain", msg);
+}
+
+const char MAIN_HTML[] PROGMEM = R"=====(
+<!DOCTYPE html>
+<head>
+
+<body>
+  <center>
+    <h4>WiFi Wemos demo</h4>
+    <h1><span id="humidity">0</span><br></h1>
+    <h1><span id="temperature">0</span><br></h1>
+  </center>
+  <script>
+    setInterval(function() {
+      updateMeasurements();
+    }, 2000); // update each 2000 ms
+    
+    function updateMeasurements() {
+      var requestHumidity = new XMLHttpRequest();
+      requestHumidity.onreadystatechange = function() {
+        if (this.readyState == 4 && this.status == 200) {
+          console.log('update humidity: ' + this.responseText);
+          document.getElementById("humidity").innerHTML = this.responseText;
+        }
+      };
+      requestHumidity.open("GET", "get_humidity", true);
+      requestHumidity.send();
+      
+      var requestTemperature = new XMLHttpRequest();
+      requestTemperature.onreadystatechange = function() {
+        if (this.readyState == 4 && this.status == 200) {
+          console.log('update temperature: ' + this.responseText);
+          document.getElementById("temperature").innerHTML = this.responseText;
+        }
+      };
+      requestTemperature.open("GET", "get_temperature", true);
+      requestTemperature.send();
+    }
+  </script>
+</body>
+</html>
+)=====";
+
+void onGetMainPage() {
+  Serial.println("requested main page");
+  webServer.send(200, "text/html", MAIN_HTML);
+}
+
+void onGetHumidity() {
+  String txt(h);
+  Serial.println("requested humidity");
+  webServer.send(200, "text/plain", txt);
+}
+
+void onGetTemperature() {
+  String txt(t);
+  Serial.println("requested temperature");
+  webServer.send(200, "text/plain", txt);
 }
 
 bool checkWiFiCredentials() {
@@ -254,10 +317,17 @@ void setup() {
   } else {
     Serial.println("The WiFi credentials are in EEPROM. Connect to WiFi...");
     connectWiFi();
+    Serial.println("Setup WebServer");
+    webServer.on("/", HTTP_GET, onGetMainPage);
+    webServer.on("/get_humidity", HTTP_GET, onGetHumidity);
+    webServer.on("/get_temperature", HTTP_GET, onGetTemperature);
+    Serial.println("Start WebServer");
+    webServer.begin();
   }
 
   dht.begin();
-  mqttClient.setServer(MQTT_BROKER_IP, 1883);
+  // mqttClient.setServer(MQTT_BROKER_IP, 1883);
+  mqttClient.setServer(MQTT_BROKER_ADDR, 1883);
   mqttClient.setCallback(onMessageReceived);
 }
 
@@ -271,12 +341,12 @@ void readSensors() {
   if (currMs - prevMs > READ_SENSORS_INTERVAL) {
     prevMs = currMs;
 
-    float h = dht.readHumidity();
+    h = dht.readHumidity();
     if (isnan(h)) {
       Serial.println("Could not read humidity from DHT22!");
       return;
     }
-    float t = dht.readTemperature();
+    t = dht.readTemperature();
     if (isnan(t)) {
       Serial.println("Could not read temperature from DHT22!");
       return;
@@ -291,8 +361,10 @@ void readSensors() {
     char strTemperature[8];
     dtostrf(t, 6, 2, strTemperature);
 
-    mqttClient.publish("/esp8266/humidity", strHumidity);
-    mqttClient.publish("/esp8266/temperature", strTemperature);
+    // mqttClient.publish("/esp8266/humidity", strHumidity);
+    // mqttClient.publish("/esp8266/temperature", strTemperature);
+    mqttClient.publish("/home/wemos/humidity", strHumidity);
+    mqttClient.publish("/home/wemos/temperature", strTemperature);
   }
 }
 
@@ -305,4 +377,5 @@ void loop() {
   
   readSensors();
 
+  webServer.handleClient();
 }

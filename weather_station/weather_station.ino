@@ -5,6 +5,7 @@
 #include <EEPROM.h>
 #include <PubSubClient.h>
 #include <DHT.h>
+#include <FS.h>
 
 ESP8266WebServer webServer(80);
 WiFiClient wifiClient;
@@ -96,6 +97,7 @@ void handleSubmit() {
   }  
 }
 
+// TO DO: move to PROGMEM
 const char INDEX_HTML[] =
 "<!DOCTYPE HTML>"
 "<html>"
@@ -144,63 +146,44 @@ void handleNotFound() {
   webServer.send(404, "text/plain", msg);
 }
 
-const char MAIN_HTML[] PROGMEM = R"=====(
-<!DOCTYPE html>
-<head>
+String getContentType(const String& path) {
+  if (path.endsWith(".html")) {
+    return "text/html";
+  } else if (path.endsWith(".htm")) {
+    return "text/html";
+  } else if (path.endsWith(".css")) {
+    return "text/css";
+  } else if (path.endsWith(".jpg")) {
+    return "image/jpeg";
+  }
+  return "text/plain";
+}
 
-<body>
-  <center>
-    <h4>WiFi Wemos demo</h4>
-    <h1><span id="humidity">0</span><br></h1>
-    <h1><span id="temperature">0</span><br></h1>
-  </center>
-  <script>
-    setInterval(function() {
-      updateMeasurements();
-    }, 2000); // update each 2000 ms
-    
-    function updateMeasurements() {
-      var requestHumidity = new XMLHttpRequest();
-      requestHumidity.onreadystatechange = function() {
-        if (this.readyState == 4 && this.status == 200) {
-          console.log('update humidity: ' + this.responseText);
-          document.getElementById("humidity").innerHTML = this.responseText;
-        }
-      };
-      requestHumidity.open("GET", "get_humidity", true);
-      requestHumidity.send();
-      
-      var requestTemperature = new XMLHttpRequest();
-      requestTemperature.onreadystatechange = function() {
-        if (this.readyState == 4 && this.status == 200) {
-          console.log('update temperature: ' + this.responseText);
-          document.getElementById("temperature").innerHTML = this.responseText;
-        }
-      };
-      requestTemperature.open("GET", "get_temperature", true);
-      requestTemperature.send();
+bool handleRequest(String path) {
+  Serial.println("HTTP request. URI: " + path);
+  if (path.equals("/humidity")) {
+    String text(h);
+    webServer.send(200, "text/plain", text);
+    return true;
+  } else if (path.equals("/temperature")) {
+    String text(t);
+    webServer.send(200, "text/plain", text);
+    return true;
+  } else {
+    if (SPIFFS.exists(path)) {
+      String contentType = getContentType(path);
+      File file = SPIFFS.open(path, "r");
+      size_t n = webServer.streamFile(file, contentType);
+      file.close();
+      return true;
     }
-  </script>
-</body>
-</html>
-)=====";
+    Serial.println("File doesn't exist.");    
+  }
 
-void onGetMainPage() {
-  Serial.println("requested main page");
-  webServer.send(200, "text/html", MAIN_HTML);
+  Serial.println("Not found.");
+  return false;
 }
 
-void onGetHumidity() {
-  String txt(h);
-  Serial.println("requested humidity");
-  webServer.send(200, "text/plain", txt);
-}
-
-void onGetTemperature() {
-  String txt(t);
-  Serial.println("requested temperature");
-  webServer.send(200, "text/plain", txt);
-}
 
 bool checkWiFiCredentials() {
   Serial.println("Checking WiFi credentials");
@@ -282,8 +265,6 @@ void reconnectMQTT() {
     Serial.print("Connecting to MQTT broker ... ");
     if (mqttClient.connect("ESP8266")) {
       Serial.println(" CONNECTED.");
-      mqttClient.subscribe("esp8266/4");
-      mqttClient.subscribe("esp8266/5");
     } else {
       Serial.print(" FAILED! error: ");
       Serial.print(mqttClient.state());
@@ -317,12 +298,22 @@ void setup() {
   } else {
     Serial.println("The WiFi credentials are in EEPROM. Connect to WiFi...");
     connectWiFi();
-    Serial.println("Setup WebServer");
-    webServer.on("/", HTTP_GET, onGetMainPage);
-    webServer.on("/get_humidity", HTTP_GET, onGetHumidity);
-    webServer.on("/get_temperature", HTTP_GET, onGetTemperature);
-    Serial.println("Start WebServer");
+    
+    if (!SPIFFS.begin()) {
+      Serial.println("SPIFFS mount failed!");
+      return;
+    } else {
+      Serial.println("SPIFFS mount succesfull.");
+    }
+
+    webServer.onNotFound([]{
+      if (!handleRequest(webServer.uri())) {
+        webServer.send(404, "text/plain", "404: Not found");      
+      }
+    });
+    
     webServer.begin();
+    Serial.println("HTTP server started.");
   }
 
   dht.begin();
@@ -361,8 +352,7 @@ void readSensors() {
     char strTemperature[8];
     dtostrf(t, 6, 2, strTemperature);
 
-    // mqttClient.publish("/esp8266/humidity", strHumidity);
-    // mqttClient.publish("/esp8266/temperature", strTemperature);
+    // TO DO: setup prefix like '/home/wemos' during initial configuration, store it in EEPROM
     mqttClient.publish("/home/wemos/humidity", strHumidity);
     mqttClient.publish("/home/wemos/temperature", strTemperature);
   }
@@ -374,7 +364,8 @@ void loop() {
   if (!mqttClient.connected()) {
     reconnectMQTT();
   }
-  
+
+  // TO DO: don't read sensors in main loop, do it with timer
   readSensors();
 
   webServer.handleClient();

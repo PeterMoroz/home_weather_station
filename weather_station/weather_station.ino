@@ -6,13 +6,19 @@
 #include <PubSubClient.h>
 #include <DHT.h>
 #include <FS.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
 
 ESP8266WebServer webServer(80);
 WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
 
-#define DHTPIN D4
-#define DHTTYPE DHT22
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 // credentials: ssid, password
 String s;
@@ -25,6 +31,8 @@ float h = 0.f, t = 0.f;
 // const char* MQTT_BROKER_IP = "192.168.0.105";
 const char* MQTT_BROKER_ADDR = "public.mqtthq.com";
 
+#define DHTPIN D4
+#define DHTTYPE DHT22
 
 DHT dht(DHTPIN, DHTTYPE);
 
@@ -290,6 +298,15 @@ void onMessageReceived(String topic, byte* message, unsigned int length) {
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    Serial.println("SSD1306 begin failed!");    
+  }
+
+  delay(2000);
+  display.clearDisplay();
+  display.setTextColor(WHITE);
+  
   EEPROM.begin(65); // signature length + max size of SSID + max size of password: 5 + 30 + 30 = 65
 
   if (!checkWiFiCredentials()) {
@@ -332,11 +349,14 @@ void readSensors() {
   if (currMs - prevMs > READ_SENSORS_INTERVAL) {
     prevMs = currMs;
 
-    h = dht.readHumidity();
+    // reading humidity takes 6 ms
+    h = dht.readHumidity();        
     if (isnan(h)) {
       Serial.println("Could not read humidity from DHT22!");
       return;
     }
+
+    // reading temperature takes 1 ms
     t = dht.readTemperature();
     if (isnan(t)) {
       Serial.println("Could not read temperature from DHT22!");
@@ -347,14 +367,46 @@ void readSensors() {
     Serial.print(" temperature: ");
     Serial.println(t);
 
+    // ------------------------------
+    // publish sensors data
+    //
     char strHumidity[8];
     dtostrf(h, 6, 2, strHumidity);
     char strTemperature[8];
     dtostrf(t, 6, 2, strTemperature);
 
+    // publishing takes 1-2 ms
     // TO DO: setup prefix like '/home/wemos' during initial configuration, store it in EEPROM
     mqttClient.publish("/home/wemos/humidity", strHumidity);
     mqttClient.publish("/home/wemos/temperature", strTemperature);
+
+    // ------------------------------
+    // display sensors data
+    //
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.print("Temperature: ");
+    display.setTextSize(2);
+    display.setCursor(0, 10);
+    display.print(t);
+    display.print(" ");
+    display.setTextSize(1);
+    display.cp437(true);
+    display.write(167);
+    display.setTextSize(2);
+    display.print("C");
+
+    display.setTextSize(1);
+    display.setCursor(0, 35);
+    display.print("Humidity: ");
+    display.setTextSize(2);
+    display.setCursor(0, 45);
+    display.print(h);    
+    display.print(" %");
+    display.display();
+
+    // total time required by this block is about 39 - 42 ms
   }
 }
 

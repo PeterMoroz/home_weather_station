@@ -1,424 +1,172 @@
-#include <ESP.h>
 #include <ESP8266WiFi.h>
-#include <WiFiClient.h>
-#include <ESP8266WebServer.h>
 #include <EEPROM.h>
-#include <PubSubClient.h>
-#include <DHT.h>
-#include <FS.h>
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
 
+#include <ESP8266WebServer.h>
+
+
+#define EEPROM_SIZE 512
+#define SSID_SIZE 32
+#define PASS_SIZE 64
+
+#define DEVICE_NAME "ESP8266"
+#define AP_SSID DEVICE_NAME
+
+#define READ_SENSOR_INTERVAL_MS 4000
 
 ESP8266WebServer webServer(80);
-WiFiClient wifiClient;
-PubSubClient mqttClient(wifiClient);
+
+float temperature = 0.f;
+float humidity = 0.f;
 
 
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-
-// credentials: ssid, password
-String s;
-String p;
-
-// sensors data
-float h = 0.f, t = 0.f;
-
-// TO DO: store in EEPROM at initial startup
-// const char* MQTT_BROKER_IP = "192.168.0.105";
-const char* MQTT_BROKER_ADDR = "public.mqtthq.com";
-
-#define DHTPIN D4
-#define DHTTYPE DHT22
-
-DHT dht(DHTPIN, DHTTYPE);
-
-bool saveWiFiCredentials() {
-
-  String ssid(webServer.arg("ssid"));
-  String pass(webServer.arg("password"));
-  
-  char buff1[30];
-  char buff2[30];
-  ssid.toCharArray(buff1, 30);
-  pass.toCharArray(buff2, 30);  
-
-  uint8_t addr = 0;
-  const char key[] = "WeMos";
-  
-  for (uint8_t i = 0; i < 5; i++) {
-    EEPROM.write(addr++, key[i]);
-  }
-  for (uint8_t i = 0; i < 30; i++) {
-    EEPROM.write(addr++, buff1[i]);
-  }
-  for (uint8_t i = 0; i < 30; i++) {
-    EEPROM.write(addr++, buff2[i]);
-  }
-
-  if (!EEPROM.commit()) {
-    Serial.print("EEPROM commit failed!");
-    return false;
-  }
-
-  delay(100);
-
-  addr = 5;
-  for (uint8_t i = 0; i < 30; i++) {
-    buff1[i] = '\0';
-    buff1[i] = EEPROM.read(addr++);
-  }
-
-  for (uint8_t i = 0; i < 30; i++) {
-    buff2[i] = '\0';
-    buff2[i] = EEPROM.read(addr++);
-  }  
-
-  s = buff1;
-  p = buff2;
-
-  Serial.print("WiFi credentials: ");
-  Serial.print(s);
-  Serial.print(' ');
-  Serial.print(p);
-
-  if (ssid == s && pass == p) {
-    return true;
-  } else {
-    return false;
-  }
-  return false;
+void handle_init() {
+  Serial.println("- init");
+  // TO DO: 
+  // 1. read content from FS 
+  // 2. use char buffer and sprintf instead of String
+  String content;
+  content = "<!DOCTYPE HTML>\r\n<html>Setup WiFi credentials to connect to WiFi network";
+  content += "<form method='get' action='set_wifi_credentials'><label>SSID: </label><input name='ssid' length=32><br>PSK: <input name='pass' length=64><br><input type='submit'></form>";
+  content += "</html>";
+  webServer.send(200, "text/html", content);  
 }
 
-void handleSubmit() {
-  String responseSuccess = "<h1>Success</h1><h2>Device will restart in 3 seconds</h2>";
-  String responseError = "<h1>Error</h1><h2><a href='/'>Go back</a> to try again</h2>";
-  if (saveWiFiCredentials()){
-    webServer.send(200, "text/html", responseSuccess);
-    delay(3000);
-    ESP.restart();
-  } else {
-    webServer.send(200, "text/html", responseError);
-  }  
+void handle_sensors() {
+  // TO DO: calculate the length of the result string and reduce buffer size
+  char page[1024];
+  sprintf(page, "<html><head><title>%s Sensors</title>" \
+                "<meta name='viewport' content=device-width, initial-scale=1.0'>" \
+                "<style> h1 {text-align:center; } td {font-size: 50%%; padding-top: 30px;}" \
+                ".temp { font-size:150%%; color: #FF0000; } .press { font-size:150%%; color: #FF0000; }" \
+                "</style></head><body> <h1>%s Sensors</h1><div id='div1'><table>" \
+                "<tr><td>Temperature</td><td class='temp'>%.2f</td></tr>" \
+                "<tr><td>Pressure</td><td class='press'>%.2f</td></tr></div><body></html",
+                DEVICE_NAME, DEVICE_NAME, temperature, humidity);
+  webServer.send(200, "text/html", page);
 }
 
-// TO DO: move to PROGMEM
-const char INDEX_HTML[] =
-"<!DOCTYPE HTML>"
-"<html>"
-"<head>"
-"<meta content=\"text/html; charset=ISO-8859-1\""
-" http-equiv=\"content-type\">"
-" <meta name = \"viewport\" content = \"width = device-width, initial-scale = 1.0, maximum-scale = 1.0, user-scalable=0\">"
-"<title>HomeSensors Authorization</title>"
-"<style>"
-"\"body { background-color: #808080; font-family: Arial, Helvetica, Sans-Serif; Color: #000000; text-align: center;}\""
-"</style>"
-"</head>"
-"<body>"
-"<h3>Enter your WiFi credentials</h3>"
-"<form action=\"/\" method=\"post\">"
-"<p>"
-"<label>SSID:&nbsp;</label>"
-"<input maxlength=\"30\" name=\"ssid\"><br>"
-"<label>Key:&nbsp;&nbsp;&nbsp;&nbsp;</label><input maxlength=\"30\" name=\"password\"><br>"
-"<input type=\"submit\" value=\"Save\">"
-"</p>"
-"</form>"
-"</body>"
-"</html>";
-
-
-void handleRoot() {
-  if (webServer.hasArg("ssid") && webServer.hasArg("password")) {
-    handleSubmit();
-  } else {
-    webServer.send(200, "text/html", INDEX_HTML);
-  }
-}
-
-void handleNotFound() {
-  String msg = "File not found\n\n";
-  msg += "URI: ";
-  msg += webServer.uri();
-  msg += "\nMethod: ";
-  msg += (webServer.method() == HTTP_GET ? "GET" : (webServer.method() == HTTP_POST ? "POST" : "unknown"));
-  msg += "\nArguments: ";
-  msg += "\n";
-  for (uint8_t i = 0; i < webServer.args(); i++) {
-    msg += " " + webServer.argName(i) + ": " + webServer.arg(i) + "\n";
-  }
-  webServer.send(404, "text/plain", msg);
-}
-
-String getContentType(const String& path) {
-  if (path.endsWith(".html")) {
-    return "text/html";
-  } else if (path.endsWith(".htm")) {
-    return "text/html";
-  } else if (path.endsWith(".css")) {
-    return "text/css";
-  } else if (path.endsWith(".jpg")) {
-    return "image/jpeg";
-  }
-  return "text/plain";
-}
-
-bool handleRequest(String path) {
-  Serial.println("HTTP request. URI: " + path);
-  if (path.equals("/humidity")) {
-    String text(h);
-    webServer.send(200, "text/plain", text);
-    return true;
-  } else if (path.equals("/temperature")) {
-    String text(t);
-    webServer.send(200, "text/plain", text);
-    return true;
-  } else {
-    if (SPIFFS.exists(path)) {
-      String contentType = getContentType(path);
-      File file = SPIFFS.open(path, "r");
-      size_t n = webServer.streamFile(file, contentType);
-      file.close();
-      return true;
-    }
-    Serial.println("File doesn't exist.");    
-  }
-
-  Serial.println("Not found.");
-  return false;
-}
-
-
-bool checkWiFiCredentials() {
-  Serial.println("Checking WiFi credentials");
-
-  // read signature
-  char buff[30] = {'\0'};
-  uint8_t addr = 0;
-
-  for (uint8_t i = 0; i < 5; i++) {
-    buff[i] = EEPROM.read(addr++);
-  }
-
-  if (strncmp(buff, "WeMos", 5)) {
-    return false;
-  }
-  
-  for (uint8_t i = 0; i < 30; i++) {
-    buff[i] = '\0';
-    buff[i] = EEPROM.read(addr++);
-  }
-  String ssid = buff;
-  
-  for (uint8_t i = 0; i < 30; i++) {
-    buff[i] = '\0';
-    buff[i] = EEPROM.read(addr++);
-  }
-  String pass = buff;
-
-  Serial.print("SSID: ");
-  Serial.println(ssid);
-  Serial.print("password: ");
-  Serial.println(pass);
+void handle_set_wifi_credentials() {
+  Serial.println("- set_wifi_credentials");
+  String ssid = webServer.arg("ssid");
+  String pass = webServer.arg("pass");
+  int statusCode = 0;
+  String content;
+  bool success = false;
 
   if (ssid.length() > 0 && pass.length() > 0) {
-    s = ssid;
-    p = pass;
-    return true;
-  }
-
-  return false;
-}
-
-void loadWiFiCredentialsForm() {
-  Serial.println("Setting access point ... ");
-  const char* ssid = "WeMos WiFi";
-  const char* password = "12345678";
-  WiFi.mode(WIFI_AP);
-  WiFi.softAP(ssid, password);
-
-  IPAddress ip = WiFi.softAPIP();
-  Serial.print("Access Point IP: ");
-  Serial.println(ip);
-
-  webServer.on("/", handleRoot);
-  webServer.onNotFound(handleNotFound);
-  webServer.begin();
-  Serial.println("Web server started.");
-  while (s.length() <= 0 && p.length() <= 0) {
-    webServer.handleClient();
-    delay(100);
-  }
-}
-
-void connectWiFi() {
-  Serial.println("Setup station mode.");
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(s, p);  
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print("*");
-  }
-  Serial.print("\nThe IP address: ");
-  Serial.println(WiFi.localIP());
-}
-
-void reconnectMQTT() {
-  // loop untill succeeded
-  while (!mqttClient.connected()) {
-    Serial.print("Connecting to MQTT broker ... ");
-    if (mqttClient.connect("ESP8266")) {
-      Serial.println(" CONNECTED.");
-    } else {
-      Serial.print(" FAILED! error: ");
-      Serial.print(mqttClient.state());
-      Serial.println(" Try again in 5 seconds.");
-      // wait for 5 seconds before retrying
-      delay(5000);
+    Serial.printf("ssid: %s, pass: %s\n", ssid.c_str(), pass.c_str());
+    Serial.println("clear EEPROM");
+    for (int i = 0; i < (SSID_SIZE + PASS_SIZE); i++)
+    {
+      EEPROM.write(i, 0);
     }
+    EEPROM.end();
+
+    EEPROM.begin(EEPROM_SIZE);
+
+    for (int i = 0; i < ssid.length(); i++) {
+      EEPROM.write(i, ssid[i]);
+    }
+    for (int i = 0; i < pass.length(); i++) {
+      EEPROM.write(i + SSID_SIZE, pass[i]);
+    }
+
+    success = EEPROM.commit();
+    delay(1000);    
+
+    if (success) {
+      content = "{\"Success\":\"saved to EEPROM. going to reset.\"}";
+      statusCode = 200;
+    } else {
+      content = "{\"Failure\":\"could not save to EEPROM.\"}";
+      statusCode = 500;
+    }
+
+  } else {
+    content = "{\"Error\":\"404 not found\"}";
+    statusCode = 404;
+  }
+
+  webServer.sendHeader("Access-Control-Allow-Origin", "*");
+  webServer.send(statusCode, "application/json", content);
+
+  if (success) {
+    ESP.reset();
   }
 }
 
-void onMessageReceived(String topic, byte* message, unsigned int length) {
-  Serial.print("Message arrived on topic: ");
-  Serial.print(topic);
-  Serial.print(" Message: ");
 
-  unsigned int i = 0;
-  for (; i < length; i++) {
-    Serial.print((char)message[i]);    
-  }
-  Serial.println();
+void readSensor() {
+  static unsigned long lastMs;
+  unsigned long currMs = millis();
+
+  if (currMs - lastMs > READ_SENSOR_INTERVAL_MS) {
+    lastMs = currMs;
+
+  }  
 }
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
-
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    Serial.println("SSD1306 begin failed!");    
-  }
-
-  delay(2000);
-  display.clearDisplay();
-  display.setTextColor(WHITE);
   
-  EEPROM.begin(65); // signature length + max size of SSID + max size of password: 5 + 30 + 30 = 65
+  WiFi.disconnect();  
 
-  if (!checkWiFiCredentials()) {
-    Serial.println("No WiFi credentials in memory. Loading form...");
-    loadWiFiCredentialsForm();
+
+  EEPROM.begin(EEPROM_SIZE);
+  delay(100);
+
+  int eepromIdx = 0;
+
+  // TO DO: use fixed length buffers
+  String ssid;
+  String pass;
+  
+  Serial.println("Read Wi-Fi credentials from EEPROM");
+  for (int i = 0; i < SSID_SIZE; i++, eepromIdx++)
+  {
+    ssid += char(EEPROM.read(eepromIdx));
+  }
+  for (int i = 0; i < PASS_SIZE; i++, eepromIdx++)
+  {
+    pass += char(EEPROM.read(eepromIdx));
+  }
+
+  bool connected = false;
+
+  Serial.printf("Connect with credentials SSID: %s, pass: %s\n", ssid.c_str(), pass.c_str());
+  WiFi.begin(ssid.c_str(), pass.c_str());
+  int cnt = 0;
+  while (cnt++ < 100) {
+    if (WiFi.status() == WL_CONNECTED) {
+      connected = true;
+      break;
+    }      
+    delay(100);
+  }
+
+  if (!connected) {
+    Serial.printf("Start AP '%s'\n", AP_SSID);
+    WiFi.softAP(AP_SSID);
+    delay(100);
+    Serial.print("SoftAP IP: ");
+    Serial.println(WiFi.softAPIP());
   } else {
-    Serial.println("The WiFi credentials are in EEPROM. Connect to WiFi...");
-    connectWiFi();
-    
-    if (!SPIFFS.begin()) {
-      Serial.println("SPIFFS mount failed!");
-      return;
-    } else {
-      Serial.println("SPIFFS mount succesfull.");
-    }
-
-    webServer.onNotFound([]{
-      if (!handleRequest(webServer.uri())) {
-        webServer.send(404, "text/plain", "404: Not found");      
-      }
-    });
-    
-    webServer.begin();
-    Serial.println("HTTP server started.");
+    Serial.print("Local IP: ");
+    Serial.println(WiFi.localIP());
   }
 
-  dht.begin();
-  // mqttClient.setServer(MQTT_BROKER_IP, 1883);
-  mqttClient.setServer(MQTT_BROKER_ADDR, 1883);
-  mqttClient.setCallback(onMessageReceived);
-}
+  Serial.println("Start web-sesrver");
 
-
-unsigned long prevMs = 0;
-const unsigned long READ_SENSORS_INTERVAL = 10000;
-
-void readSensors() {
-  // TO DO: measure how long does it take to read the sensor's data
-  unsigned long currMs = millis();
-  if (currMs - prevMs > READ_SENSORS_INTERVAL) {
-    prevMs = currMs;
-
-    // reading humidity takes 6 ms
-    h = dht.readHumidity();        
-    if (isnan(h)) {
-      Serial.println("Could not read humidity from DHT22!");
-      return;
-    }
-
-    // reading temperature takes 1 ms
-    t = dht.readTemperature();
-    if (isnan(t)) {
-      Serial.println("Could not read temperature from DHT22!");
-      return;
-    }
-    Serial.print("humidity: ");
-    Serial.print(h);
-    Serial.print(" temperature: ");
-    Serial.println(t);
-
-    // ------------------------------
-    // publish sensors data
-    //
-    char strHumidity[8];
-    dtostrf(h, 6, 2, strHumidity);
-    char strTemperature[8];
-    dtostrf(t, 6, 2, strTemperature);
-
-    // publishing takes 1-2 ms
-    // TO DO: setup prefix like '/home/wemos' during initial configuration, store it in EEPROM
-    mqttClient.publish("/home/wemos/humidity", strHumidity);
-    mqttClient.publish("/home/wemos/temperature", strTemperature);
-
-    // ------------------------------
-    // display sensors data
-    //
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.print("Temperature: ");
-    display.setTextSize(2);
-    display.setCursor(0, 10);
-    display.print(t);
-    display.print(" ");
-    display.setTextSize(1);
-    display.cp437(true);
-    display.write(167);
-    display.setTextSize(2);
-    display.print("C");
-
-    display.setTextSize(1);
-    display.setCursor(0, 35);
-    display.print("Humidity: ");
-    display.setTextSize(2);
-    display.setCursor(0, 45);
-    display.print(h);    
-    display.print(" %");
-    display.display();
-
-    // total time required by this block is about 39 - 42 ms
-  }
+  webServer.on("/init", handle_init);
+  webServer.on("/sensors", handle_sensors);
+  webServer.on("/set_wifi_credentials", handle_set_wifi_credentials);  
+  
+  webServer.begin();
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-
-  if (!mqttClient.connected()) {
-    reconnectMQTT();
-  }
-
-  // TO DO: don't read sensors in main loop, do it with timer
-  readSensors();
-
   webServer.handleClient();
+  readSensor();
 }

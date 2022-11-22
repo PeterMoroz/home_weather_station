@@ -7,6 +7,8 @@
 #include <Wire.h>
 // #include <CCS811.h>
 #include "ccs811.h"
+#include "DHTesp.h"
+
 
 
 #define EEPROM_SIZE 512
@@ -24,11 +26,13 @@
 
 ESP8266WebServer webServer(80);
 CCS811 ccs811(-1, 0x5A);
+DHTesp dht;
 
 WiFiClient wifiClient;
 PubSubClient pubSubClient(wifiClient);
 
 float temperature = 0.f;
+float humidity = 0.f;
 float co2 = 0.f;
 float tvoc = 0.f;
 
@@ -245,8 +249,26 @@ void readSensors() {
   //
   //  }
 
-  if (!ccs811.set_envdata_Celsius_percRH(22.0f, 40.0f)) {
-    Serial.println("CCS811 set environment data failed.");
+  float h = dht.getHumidity();
+  float t = dht.getTemperature();
+
+  if (!isnan(h)) {
+    ::humidity = h;
+  } else {
+    Serial.println("DHT22 could not get humidity.");
+  }
+
+  if (!isnan(t)) {
+    ::temperature = t;
+  } else {
+    Serial.println("DHT22 could not get temperature.");
+  }
+
+  if (!isnan(h) && !isnan(t)) {
+    Serial.printf("DHT - temperature: %0.2f deg, humidity: %0.2f %%\n", t, h);
+    if (!ccs811.set_envdata_Celsius_percRH(t, h)) {
+      Serial.println("CCS811 set environment data failed.");
+    }
   }
 
   uint16_t eco2, etvoc, errstat, raw;
@@ -276,9 +298,9 @@ void readSensors() {
 
 void publishSensors() {
   char topic[32];
-  char message[64];
+  char message[92];
   sprintf(topic, "%s/%s", DEVICE_NAME, "CCS811");
-  sprintf(message, "CO2: %0.2f ppm, TVOC: %0.2f ppb", co2, tvoc);
+  sprintf(message, "temperature: %0.2f deg, humidity: %0.2f %%, CO2: %0.2f ppm, TVOC: %0.2f ppb", temperature, humidity, co2, tvoc);
 
   if (!pubSubClient.publish(topic, message)) {
     Serial.println("Could not publish message");
@@ -355,6 +377,8 @@ void setup() {
 
   webServer.begin();
 
+  dht.setup(16, DHTesp::DHT22);
+
   Wire.begin();
   ccs811.set_i2cdelay(50);
 
@@ -380,4 +404,17 @@ void loop() {
   publishSensors();
   delay(1000);
   webServer.handleClient();
+//  if (!pubSubClient.loop()) {
+//    mqtt_connect();
+//  }
+
+  bool c = pubSubClient.connected();
+  if (!c) {
+    Serial.println("MQTT client disconnected.");
+  }
+  
+  bool l = pubSubClient.loop();
+  if (!l) {
+    Serial.println("MQTT lost connection.");
+  }  
 }

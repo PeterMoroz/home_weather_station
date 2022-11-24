@@ -9,7 +9,7 @@
 #include "ccs811.h"
 #include "DHTesp.h"
 
-
+#include "sensors_page.h"
 
 #define EEPROM_SIZE 512
 
@@ -52,20 +52,18 @@ void handle_setup() {
   webServer.send(200, "text/html", content);
 }
 
+
 void handle_sensors() {
-  // TO DO: calculate the length of the result string and reduce buffer size
-  char page[1024];
-  sprintf(page, "<html><head><title>%s Sensors</title>" \
-          "<meta name='viewport' content=device-width, initial-scale=1.0'>" \
-          "<style> h1 {text-align:center; } td {font-size: 50%%; padding-top: 30px;}" \
-          ".co2 { font-size:150%%; color: #FF0000; } .tvoc { font-size:150%%; color: #00FF00; }" \
-          ".temp { font-size:150%%; color: #0000FF; }" \
-          "</style></head><body> <h1>%s Sensors</h1><div id='div1'><table>" \
-          "<tr><td>CO2</td><td class='co2'>%.2f</td></tr>" \
-          "<tr><td>ppm, TVOC</td><td class='TVOC'>%.2f</td></tr>" \
-          "<tr><td>ppb, temperature</td><td class='temp'>%.2f</td></tr></div><body></html",
-          DEVICE_NAME, DEVICE_NAME, co2, tvoc, temperature);
-  webServer.send(200, "text/html", page);
+  String s = sensors_page;
+  webServer.send(200, "text/html", s);
+}
+
+void handle_measurements() {
+  Serial.println("- measurements");
+  // TO DO: shrink buffer size (~96 should be enough)
+  char buff[128];
+  sprintf(buff, "{\"temperature\": %0.2f, \"humidity\": %0.2f, \"tvoc\": %0.2f, \"co2\": %0.2f }", ::temperature, ::humidity, ::tvoc, ::co2);
+  webServer.send(200, "text/html", buff);
 }
 
 void handle_setup_wifi() {
@@ -374,6 +372,7 @@ void setup() {
   webServer.on("/sensors", handle_sensors);
   webServer.on("/setup_mqtt", handle_setup_mqtt);
   webServer.on("/setup_wifi", handle_setup_wifi);
+  webServer.on("/measurements", handle_measurements);
 
   webServer.begin();
 
@@ -401,20 +400,20 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   readSensors();
-  publishSensors();
+  // publishSensors();
   delay(1000);
   webServer.handleClient();
 //  if (!pubSubClient.loop()) {
 //    mqtt_connect();
 //  }
 
-  bool c = pubSubClient.connected();
-  if (!c) {
-    Serial.println("MQTT client disconnected.");
-  }
-  
-  bool l = pubSubClient.loop();
-  if (!l) {
-    Serial.println("MQTT lost connection.");
-  }  
+//  bool c = pubSubClient.connected();
+//  if (!c) {
+//    Serial.println("MQTT client disconnected.");
+//  }
+//  
+//  bool l = pubSubClient.loop();
+//  if (!l) {
+//    Serial.println("MQTT lost connection.");
+//  }
 }

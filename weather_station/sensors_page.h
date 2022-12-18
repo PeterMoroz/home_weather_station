@@ -157,10 +157,10 @@ const char sensors_page[] PROGMEM = R"=====(
 			var today = new Date();
 			document.getElementById('date').innerHTML = today.toLocaleDateString("en-US", options);
 			// hour
-			var hourAngle = (360 * (hour / 12)) + ((360 / 12) * (minute / 60));
+			var hourAngle = (360 * (hour / 12)) + ((360 / 12) * (minutes / 60));
 			document.getElementById("hour").style.transform = "rotate(" + (hourAngle) + "deg)";
 			// minute
-			var minuteAngle = 360 * (minute / 60);
+			var minuteAngle = 360 * (minutes / 60);
 			document.getElementById("minute").style.transform = "rotate(" + (minuteAngle) + "deg)";
 			// get measurements
 			var xhttp = new XMLHttpRequest();

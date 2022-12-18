@@ -60,8 +60,7 @@ void handle_sensors() {
 
 void handle_measurements() {
   Serial.println("- measurements");
-  // TO DO: shrink buffer size (~96 should be enough)
-  char buff[128];
+  char buff[96];
   sprintf(buff, "{\"temperature\": %0.2f, \"humidity\": %0.2f, \"tvoc\": %0.2f, \"co2\": %0.2f }", ::temperature, ::humidity, ::tvoc, ::co2);
   webServer.send(200, "text/html", buff);
 }

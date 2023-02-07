@@ -2,10 +2,8 @@
 #include <EEPROM.h>
 
 #include <ESP8266WebServer.h>
-#include <PubSubClient.h>
 
 #include <Wire.h>
-// #include <CCS811.h>
 #include "ccs811.h"
 #include "DHTesp.h"
 
@@ -22,14 +20,13 @@
 #define DEVICE_NAME "ESP8266"
 #define AP_SSID DEVICE_NAME
 
-#define READ_SENSOR_INTERVAL_MS 1000
+#define READ_SENSOR_INTERVAL_MS 2000
 
 ESP8266WebServer webServer(80);
 CCS811 ccs811(-1, 0x5A);
 DHTesp dht;
 
 WiFiClient wifiClient;
-PubSubClient pubSubClient(wifiClient);
 
 float temperature = 0.f;
 float humidity = 0.f;
@@ -45,10 +42,7 @@ void handle_setup() {
   String content;
   content = "<!DOCTYPE HTML>\r\n<html>Setup ";
   content += "<h1>WiFi settings</h1><br>";
-  content += "<form method='get' action='setup_wifi'><label>SSID: </label><input name='ssid' length=32><br>PSK: <input name='pass' length=64><br><input type='submit'></form><br>";
-  content += "<h1>MQTT settings</h1><br>";
-  content += "<form method='get' action='setup_mqtt'><label>Broker: </label><input name='broker' length=64><br>port: <input name='port' length=5><br>";
-  content += "<label>Device Id:</label><input name ='device-id' length=16><br><input type='submit'> </form> </html>";
+  content += "<form method='get' action='setup_wifi'><label>SSID: </label><input name='ssid' length=32><br>PSK: <input name='pass' length=64><br><input type='submit'></form><br></html>";
   webServer.send(200, "text/html", content);
 }
 
@@ -138,106 +132,8 @@ void read_mqtt_endpoint(IPAddress& ipaddr, uint16_t& port) {
 }
 
 
-bool mqtt_reconnect(const IPAddress& mqttServer, uint16_t mqttPort, uint8_t attempts = 10) {
-  pubSubClient.disconnect();
-  Serial.printf("Set MQTT : server = %u.%u.%u.%u, port = %u\n", mqttServer[0], mqttServer[1], mqttServer[2], mqttServer[3], mqttPort);
-  pubSubClient.setServer(mqttServer, mqttPort);
-
-  while (!pubSubClient.connected() && attempts != 0) {
-    Serial.println("Connect MQTT client...");
-    if (!pubSubClient.connect(DEVICE_NAME)) {
-      Serial.printf("connect failed (errcode %d)\n", pubSubClient.state());
-      delay(1000);
-      attempts--;  
-    }
-  }
-
-  return pubSubClient.connected();
-}
-
-bool mqtt_connect() {
-  IPAddress addr;
-  uint16_t port;
-  Serial.println("Connect to MQTT broker.");
-  read_mqtt_endpoint(addr, port);
-  Serial.printf("Endpoint - %s:%u\n", addr, port);
-  return mqtt_reconnect(addr, port);
-}
-
-void handle_setup_mqtt() {
-  Serial.println("- setup_mqtt");
-  String broker = webServer.arg("broker");
-  String port = webServer.arg("port");
-  String deviceId = webServer.arg("device-id");
-
-  Serial.printf("broker: %s, port: %u, deviceId: %s\n", broker.c_str(), atoi(port.c_str()), deviceId.c_str());
-
-  String mqttServer;
-  uint16_t mqttPort = 1883;
-
-  bool needReconnect = broker.length() > 0 && port.length() > 0;
-
-  if (broker.length() > 0 && port.length() > 0) {
-    mqttServer = broker;
-    mqttPort = atoi(port.c_str());
-  } else if (broker.length() > 0) {
-    mqttServer = broker;
-  }
-
-  if (needReconnect) { 
-    IPAddress brokerIP;
-    if (!WiFi.hostByName(broker.c_str(), brokerIP)) {
-      Serial.println("WiFi.hostByName failed!");
-      webServer.sendHeader("Access-Control-Allow-Origin", "*");
-      webServer.send(400, "text/plain", "Could not resolve MQTT broker IP.");
-      return ;
-    }
-  
-    Serial.printf("Broker IP: %u.%u.%u.%u\n", brokerIP[0], brokerIP[1], brokerIP[2], brokerIP[3]);
-
-    IPAddress addr;
-    uint16_t port;
-    read_mqtt_endpoint(addr, port);
-    if (addr == brokerIP && port == mqttPort) {
-      needReconnect = false;
-    } else {
-      if (mqtt_reconnect(brokerIP, mqttPort, 2)) {
-        if (addr != brokerIP) {
-          int i = SSID_SIZE + PASS_SIZE;
-          EEPROM.put(i, brokerIP[0]);
-          EEPROM.put(i + 1, brokerIP[1]);
-          EEPROM.put(i + 2, brokerIP[2]);
-          EEPROM.put(i + 3, brokerIP[3]);
-        }
-
-        if (port != mqttPort) {
-          int i = SSID_SIZE + PASS_SIZE + 4;
-          EEPROM.put(i, (uint8_t)(mqttPort >> 8));
-          EEPROM.put(i + 1, (uint8_t)(mqttPort & 0xFF));
-        }
-
-        if (!EEPROM.commit()) {
-          webServer.sendHeader("Access-Control-Allow-Origin", "*");
-          webServer.send(500, "text/plain", "Could not save parameters to EERPOM.");
-          return ;
-        }
-        
-      } else {
-        webServer.sendHeader("Access-Control-Allow-Origin", "*");
-        webServer.send(400, "text/plain", "Could not connect to MQTT broker.");
-        return ;
-      }
-    }
-  }
-
-  webServer.sendHeader("Access-Control-Allow-Origin", "*");
-  webServer.send(200, "text/plain", "Settings changed.");
-
-  // TO DO: reconnect if needed
-}
-
-
 void readSensors() {
+  // TO DO: read DHT22 at frequency 0.5 Hz (one reading every two seconds)
   //  static unsigned long lastMs;
   //  unsigned long currMs = millis();
   //
@@ -293,17 +189,6 @@ void readSensors() {
   }
 }
 
-void publishSensors() {
-  char topic[32];
-  char message[92];
-  sprintf(topic, "%s/%s", DEVICE_NAME, "CCS811");
-  sprintf(message, "temperature: %0.2f deg, humidity: %0.2f %%, CO2: %0.2f ppm, TVOC: %0.2f ppb", temperature, humidity, co2, tvoc);
-
-  if (!pubSubClient.publish(topic, message)) {
-    Serial.println("Could not publish message");
-  }
-}
-
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
@@ -354,22 +239,10 @@ void setup() {
     Serial.println(WiFi.localIP());
   }
 
-//  String mqttBroker("test.mosquitto.org");
-//  uint16_t mqttPort = 1883;
-//
-//  Serial.println("Setup MQTT client");
-//  pubSubClient.setServer(mqttBroker.c_str(), mqttPort);
-
-  if (!mqtt_connect()) {
-    Serial.println("Could not connect to MQTT broker.");
-    return;
-  }
-
   Serial.println("Start web-sesrver");
 
   webServer.on("/setup", handle_setup);
   webServer.on("/sensors", handle_sensors);
-  webServer.on("/setup_mqtt", handle_setup_mqtt);
   webServer.on("/setup_wifi", handle_setup_wifi);
   webServer.on("/measurements", handle_measurements);
 
@@ -399,20 +272,6 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   readSensors();
-  // publishSensors();
   delay(1000);
   webServer.handleClient();
-//  if (!pubSubClient.loop()) {
-//    mqtt_connect();
-//  }
-
-//  bool c = pubSubClient.connected();
-//  if (!c) {
-//    Serial.println("MQTT client disconnected.");
-//  }
-//  
-//  bool l = pubSubClient.loop();
-//  if (!l) {
-//    Serial.println("MQTT lost connection.");
-//  }
 }

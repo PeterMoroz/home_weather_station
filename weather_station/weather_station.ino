@@ -36,9 +36,14 @@ float tvoc = 0.f;
 
 void handle_setup() {
   Serial.println("- setup");
-  // TO DO:
-  // 1. read content from FS
-  // 2. use char buffer and sprintf instead of String
+  /* TO DO:
+   1. read content from FS
+   2. send content from opened file
+   
+      File file = SPIFFS.open(path, "r");
+      size_t n = webServer.streamFile(file, "text/html");
+      file.close();  
+  */
   String content;
   content = "<!DOCTYPE HTML>\r\n<html>Setup ";
   content += "<h1>WiFi settings</h1><br>";
@@ -46,8 +51,15 @@ void handle_setup() {
   webServer.send(200, "text/html", content);
 }
 
-
 void handle_sensors() {
+  /* TO DO:
+   1. read content from FS
+   2. send content from opened file
+   
+      File file = SPIFFS.open(path, "r");
+      size_t n = webServer.streamFile(file, "text/html");
+      file.close();  
+  */	
   String s = sensors_page;
   webServer.send(200, "text/html", s);
 }
@@ -108,29 +120,6 @@ void handle_setup_wifi() {
     ESP.reset();
   }
 }
-
-//#define SSID_SIZE 32
-//#define PASS_SIZE 64
-//
-//#define URL_SIZE 64
-//#define PORT_SIZE 5
-//#define DEVICE_ID_SIZE 16
-
-void read_mqtt_endpoint(IPAddress& ipaddr, uint16_t& port) {
-  uint8_t endpoint[6] = { 0 };
-  // ssid += char(EEPROM.read(eepromIdx));
-
-  int i = SSID_SIZE + PASS_SIZE, j = 0;
-  for (; i < SSID_SIZE + PASS_SIZE + 6; i++, j++) {
-    endpoint[j] = EEPROM.read(i);
-  }
-
-  ipaddr = IPAddress(endpoint[0], endpoint[1], endpoint[2], endpoint[3]);
-  port = endpoint[4];
-  port <<= 8;
-  port += endpoint[5];
-}
-
 
 void readSensors() {
   // TO DO: read DHT22 at frequency 0.5 Hz (one reading every two seconds)

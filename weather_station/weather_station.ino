@@ -4,6 +4,8 @@
 #include <ESP8266WebServer.h>
 
 #include <Wire.h>
+#include <FS.h>
+
 #include "ccs811.h"
 #include "DHTesp.h"
 
@@ -44,11 +46,24 @@ void handle_setup() {
       size_t n = webServer.streamFile(file, "text/html");
       file.close();  
   */
+
+  /*
   String content;
   content = "<!DOCTYPE HTML>\r\n<html>Setup ";
   content += "<h1>WiFi settings</h1><br>";
   content += "<form method='get' action='setup_wifi'><label>SSID: </label><input name='ssid' length=32><br>PSK: <input name='pass' length=64><br><input type='submit'></form><br></html>";
   webServer.send(200, "text/html", content);
+  */
+
+  File file = SPIFFS.open("/setup.html", "r");
+  if (file) {
+    size_t n = webServer.streamFile(file, "text/html");
+    file.close();    
+  } else {
+    Serial.println("Could not open file 'setup.html'");
+    webServer.send(404, "text/plain", "not found setup.html");
+  }
+  
 }
 
 void handle_sensors() {
@@ -60,8 +75,19 @@ void handle_sensors() {
       size_t n = webServer.streamFile(file, "text/html");
       file.close();  
   */	
+  /* 
   String s = sensors_page;
   webServer.send(200, "text/html", s);
+  */
+
+  File file = SPIFFS.open("/sensors.html", "r");
+  if (file) {
+    size_t n = webServer.streamFile(file, "text/html");
+    file.close();    
+  } else {
+    Serial.println("Could not open file 'sensors.html'");
+    webServer.send(404, "text/plain", "not found sensors.html");
+  }
 }
 
 void handle_measurements() {
@@ -183,6 +209,10 @@ void setup() {
   Serial.begin(115200);
 
   WiFi.disconnect();
+
+  if (!SPIFFS.begin()) {
+    Serial.println("Could not mount FS.");
+  }
 
 
   EEPROM.begin(EEPROM_SIZE);

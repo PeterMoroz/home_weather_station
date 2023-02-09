@@ -1,0 +1,17 @@
+Executable segment sizes:
+IROM   : 235384          - code in flash         (default or ICACHE_FLASH_ATTR) 
+IRAM   : 27632   / 32768 - code in IRAM          (ICACHE_RAM_ATTR, ISRs...) 
+DATA   : 1248  )         - initialized variables (global, static) in RAM/HEAP 
+RODATA : 852   ) / 81920 - constants             (global, static) in RAM/HEAP 
+BSS    : 25008 )         - zeroed variables      (global, static) in RAM/HEAP 
+Sketch uses 265116 bytes (25%) of program storage space. Maximum is 1044464 bytes.
+Global variables use 27108 bytes (33%) of dynamic memory, leaving 54812 bytes for local variables. Maximum is 81920 bytes.
+Executable segment sizes:
+ICACHE : 32768           - flash instruction cache 
+IROM   : 311084          - code in flash         (default or ICACHE_FLASH_ATTR) 
+IRAM   : 28105   / 32768 - code in IRAM          (IRAM_ATTR, ISRs...) 
+DATA   : 1504  )         - initialized variables (global, static) in RAM/HEAP 
+RODATA : 1992  ) / 81920 - constants             (global, static) in RAM/HEAP 
+BSS    : 26656 )         - zeroed variables      (global, static) in RAM/HEAP 
+Sketch uses 342685 bytes (32%) of program storage space. Maximum is 1044464 bytes.
+Global variables use 30152 bytes (36%) of dynamic memory, leaving 51768 bytes for local variables. Maximum is 81920 bytes.

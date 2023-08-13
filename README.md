@@ -5,7 +5,7 @@ The weather station based on ESP8266 microcontroller (WeMos D1 mini).
 The main goal of the project is to make a simple home weather station with additional feature of air-condition monitoring.
 
 ## design notes
-I chose X microcontroller because it has support of WiFi "out of the box" , resources enough for my needs (at first sight, 
+I chose ESP8266 microcontroller because it has support of WiFi "out of the box" , resources enough for my needs (at first sight, 
 who knows how the project will grow :) ) and it's infrastructure (toolchains, SDK, etc). 
 
 As an environment parameters' sensor I chose DHT22 due to it's 1-Wire interface. It is a simple and cheap sensor which 

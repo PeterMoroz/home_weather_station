@@ -23,4 +23,11 @@ To talk and interact with DHT22 sensor I use the library [DHTesp] (https://githu
 It's a fork of [arduino-DHT] (https://github.com/markruys/arduino-DHT) adopted to ESP microcontrollers.
 
 An initial schematic to read temperature and humidity with DHT22 sensor is pictured below.
-[Connnect DHT22 to WeMos D1 board](./assets/weather_station.svg)
+![Connnect DHT22 to WeMos D1 board](./assets/weather_station.png)
+
+A one note about wiring diagram. The DHT22 require external pull-up resistor on the data line. I saw few shematics with different
+values (anything in the range from 1kOm to 10kOm should work fine). I use a resistor 4.7 kOm as recommended by the manufacturer.
+And a few words about the period of sensor's polling. In accordance with datasheet the minimal polling interval is 2 seconds and 
+when I dropped an eye into the implementation of DHTesp library I found that it doesn't allow to poll sensor more often. Therefore
+in my code I calculate the time-delta between current time and time of the last reading and poll the sensor again only when 
+*(currentTime - lastReadingTime ) > 2 s.*

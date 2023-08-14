@@ -16,12 +16,12 @@ void setup() {
   // the sensor's model is DHT22
   dht.setup(D0, DHTesp::DHT22);
 
-  minSamplingPeriodMs = dht.getMinimumSamplingPeriod();
+  minSamplingPeriodMs = dht.getMinimumSamplingPeriod();  
 }
 
 void loop() {
   long currTime = millis();
-  if ((currTime - lastTimeReadSensor) < minSamplingPeriodMs) {
+  if ((currTime - lastTimeReadSensor) > minSamplingPeriodMs) {
     lastTimeReadSensor = currTime;
     th = dht.getTempAndHumidity();
     Serial.printf("temperature: %.2f celsius degrees, humidity: %.2f %%\n", th.temperature, th.humidity);

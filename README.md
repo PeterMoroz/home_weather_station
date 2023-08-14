@@ -30,4 +30,4 @@ values (anything in the range from 1kOm to 10kOm should work fine). I use a resi
 And a few words about the period of sensor's polling. In accordance with datasheet the minimal polling interval is 2 seconds and 
 when I dropped an eye into the implementation of DHTesp library I found that it doesn't allow to poll sensor more often. Therefore
 in my code I calculate the time-delta between current time and time of the last reading and poll the sensor again only when 
-*(currentTime - lastReadingTime ) > 2 s.*
+*(currentTime - lastReadingTime ) > minSamplingPeriod.* where the value minSamplingPeriod equals 2 seconds is returned by library.

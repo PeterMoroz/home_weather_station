@@ -74,3 +74,10 @@ like temeparture and humidity.
 
 The wiring connection of sensors to WeMos board as depicted.
 ![Connnect DHT22 and CSS811 to WeMos D1 board](./assets/weather_station_dht22-css811.png) .
+
+
+Unfortunatelly after updating the code board began to fall into constant reboot with stack trace which was dumping into 
+serial monitor window. I'm going to find the reason of observed problem by debugger but later. To make things forward 
+I tried another CCS811 support library [Arduino library for CSS811 gas sensor] (https://github.com/maarten-pennings/CCS811) .
+
+The interface to basic functional of the gas sensor is the same. Haven't explore the internals thorough enough yet, but it works.

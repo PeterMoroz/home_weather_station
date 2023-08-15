@@ -1,11 +1,11 @@
 #include <Wire.h>
 
-#include <Adafruit_CCS811.h>
+#include "ccs811.h"
 #include "DHTesp.h"
 
 #define CCS811_SAMPLING_PERIOD 60000
 
-Adafruit_CCS811 ccs811;
+CCS811 ccs811;
 DHTesp dht;
 
 
@@ -29,15 +29,39 @@ void setup() {
   // enable I2C
   Wire.begin();
 
+  Serial.print("CCS811 library version: ");
+  Serial.println(CCS811_VERSION);
+
+// TO DO: check - is it really needed ?
+  //ccs811.set_i2cdelay(500);  
+  
   if (!ccs811.begin()) {
     Serial.println("Could not initialize CCS811 library!");
     while (1) ;
   }
 
-  ccs811.setDriveMode(CCS811_DRIVE_MODE_60SEC);
+  int v = ccs811.hardware_version();
+  if (v != -1)
+    Serial.printf("CCS811 hardware version: %02x\n", v);
+  else
+    Serial.println("CCS811 hardware version - couldn't get due to I2C error");
 
-  // wait for the sensor to be ready
-  while (!ccs811.available()) ;
+  v = ccs811.bootloader_version();
+  if (v != -1)
+    Serial.printf("CCS811 bootloader version: %04x\n", v);
+  else
+    Serial.println("CCS811 bootloader version - couldn't get due to I2C error");
+
+  v = ccs811.application_version();
+  if (v != -1)
+    Serial.printf("CCS811 application version: %04x\n", v);
+  else
+    Serial.println("CCS811 application version - couldn't get due to I2C error");        
+
+
+  if (!ccs811.start(CCS811_MODE_60SEC)) {
+    Serial.println("CCS811 start failed");
+  }
 
   Serial.println("Setup complete.");
 }
@@ -49,23 +73,23 @@ void loop() {
     th = dht.getTempAndHumidity();
     Serial.printf("temperature: %.2f celsius degrees, humidity: %.2f %%\n", th.temperature, th.humidity);
     if (!isnan(th.humidity) && !isnan(th.temperature)) {
-      ccs811.setEnvironmentalData(th.humidity, th.temperature);
+      ccs811.set_envdata_Celsius_percRH(th.temperature, th.humidity);
     }
   }
 
   if ((currTime - lastTimeReadTVOC) > CCS811_SAMPLING_PERIOD) {    
-    if (ccs811.available()) {
-      uint8_t retcode = ccs811.readData();
-      if (retcode == 0) {
-        uint16_t tvoc = ccs811.getTVOC();
-        uint16_t eco2 = ccs811.geteCO2();
-        lastTimeReadTVOC = currTime;
-      } else {
-        // TO DO: decode error
-        Serial.printf("Error when read CCS811 data: %02X\n", retcode);
-      }
+    uint16_t eco2, etvoc, errstat, raw;
+    ccs811.read(&eco2, &etvoc, &errstat, &raw);
+    lastTimeReadTVOC = currTime;
+
+    if (errstat == CCS811_ERRSTAT_OK) {
+      Serial.printf("CCS811 - eCO2: %u ppm, eTVOC: %u ppb\n", eco2, etvoc);
+    } else if (errstat == CCS811_ERRSTAT_OK_NODATA) {
+      Serial.println("CCS811 - waiting for new data.");
+    } else if (errstat & CCS811_ERRSTAT_I2CFAIL) {
+      Serial.println("CCS811 - I2C error.");
     } else {
-      Serial.println("No data from CCS811");
+      Serial.printf("CCS811 - error %04x (%s)\n", errstat, ccs811.errstat_str(errstat));
     }
   }
 

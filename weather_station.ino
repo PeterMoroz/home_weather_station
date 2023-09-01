@@ -1,12 +1,21 @@
 #include <Wire.h>
 
+#include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+
 #include "ccs811.h"
 #include "DHTesp.h"
 
-#define CCS811_SAMPLING_PERIOD 60000
+// #define CCS811_SAMPLING_PERIOD 60000
+#define CCS811_SAMPLING_PERIOD 1000
+
+#define SSID ""
+#define PKEY ""
 
 CCS811 ccs811;
 DHTesp dht;
+
+HTTPClient httpClient;
 
 
 int dhtSamplingPeriod = 0x7FFFFFFF;
@@ -58,12 +67,35 @@ void setup() {
   else
     Serial.println("CCS811 application version - couldn't get due to I2C error");        
 
+//  if (!ccs811.start(CCS811_MODE_60SEC)) {
+//    Serial.println("CCS811 start failed");
+//  }
 
-  if (!ccs811.start(CCS811_MODE_60SEC)) {
+  if (!ccs811.start(CCS811_MODE_1SEC)) {
     Serial.println("CCS811 start failed");
   }
 
+  WiFi.begin(SSID, PKEY);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("Connecting to wifi ...");
+  }
+
   Serial.println("Setup complete.");
+}
+
+
+void sendAirQualityData(uint16_t eco2, uint16_t etvoc) {
+  char url[64] = { '\0' };
+  sprintf(url, "http://192.168.0.105:5000/ccs811?eco2=%u&etvoc=%u", eco2, etvoc);
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFiClient wifiClient;
+    HTTPClient httpClient;
+    httpClient.begin(wifiClient, url);
+    int rcode = httpClient.GET();
+    Serial.printf("url: %s\trcode: %d\n", url, rcode);
+    httpClient.end();
+  }
 }
 
 void loop() {
@@ -74,6 +106,9 @@ void loop() {
     Serial.printf("temperature: %.2f celsius degrees, humidity: %.2f %%\n", th.temperature, th.humidity);
     if (!isnan(th.humidity) && !isnan(th.temperature)) {
       ccs811.set_envdata_Celsius_percRH(th.temperature, th.humidity);
+
+      // TO DO: send measurements, using POST
+      char s[64] = { '\0' };
     }
   }
 
@@ -84,6 +119,7 @@ void loop() {
 
     if (errstat == CCS811_ERRSTAT_OK) {
       Serial.printf("CCS811 - eCO2: %u ppm, eTVOC: %u ppb\n", eco2, etvoc);
+      sendAirQualityData(eco2, etvoc);
     } else if (errstat == CCS811_ERRSTAT_OK_NODATA) {
       Serial.println("CCS811 - waiting for new data.");
     } else if (errstat & CCS811_ERRSTAT_I2CFAIL) {
@@ -92,5 +128,5 @@ void loop() {
       Serial.printf("CCS811 - error %04x (%s)\n", errstat, ccs811.errstat_str(errstat));
     }
   }
-
+ 
 }

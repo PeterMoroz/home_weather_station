@@ -23,7 +23,7 @@ a little bit my knowledges gained during experiments and make some improvements 
 To talk and interact with DHT22 sensor I use the library [DHTesp] (https://github.com/beegee-tokyo/DHTesp) .
 It's a fork of [arduino-DHT] (https://github.com/markruys/arduino-DHT) adopted to ESP microcontrollers.
 
-An initial schematic to read temperature and humidity with DHT22 sensor is pictured below.
+An initial schematic to read temperature and humidity with DHT22 sensor is pictured below
 ![Connnect DHT22 to WeMos D1 board](./assets/weather_station_dht22.png)
 
 A one note about wiring diagram. The DHT22 require external pull-up resistor on the data line. I saw few shematics with different
@@ -41,43 +41,43 @@ in the global scope, initialize object and set operation mode in setup() routine
 equal to operation mode (60 seconds). To make evaluations more precise, sensor's firmware allows set the environment parameters 
 like temeparture and humidity. 
 
+```
+#include <Adafruit_CCS811.h>
+...
+Adafruit_CCS811 ccs811;
+...
+void setup() {
+   ...    
+   if (!ccs811.begin()) {
+     Serial.println("Could not initialize CCS811 library!");
+     while (1) ;
+   }
+   ccs811.setDriveMode(CCS811_DRIVE_MODE_60SEC);
+  ...
+}
 
-`#include <Adafruit_CCS811.h>`
-`...`
-`Adafruit_CCS811 ccs811;`
-`...`
-`void setup() {`
-`   ...    `
-`   if (!ccs811.begin()) {`
-`     Serial.println("Could not initialize CCS811 library!");`
-`     while (1) ;`
-`   }`
-`   ccs811.setDriveMode(CCS811_DRIVE_MODE_60SEC);`
-`  ...`
-`}`
-
-`void loop() {`
-`   ...   `
-`    if (!isnan(th.humidity) && !isnan(th.temperature)) {`
-`      ccs811.setEnvironmentalData(th.humidity, th.temperature);`
-`    }`
-`   ...   `
-`    if (ccs811.available()) { `
-`       uint8_t rc = ccs811.readData(); `
-`       if (rc == 0) {
-`           uint16_t tvoc = ccs811.getTVOC(); `
-`           uint16_t eco2 = ccs811.geteCO2(); `
-`       } `
-`    } `
-`   ...   `
-`}`
+void loop() {
+   ...   
+    if (!isnan(th.humidity) && !isnan(th.temperature)) {
+      ccs811.setEnvironmentalData(th.humidity, th.temperature);
+    }
+   ...   
+    if (ccs811.available()) {
+       uint8_t rc = ccs811.readData();
+       if (rc == 0) {
+           uint16_t tvoc = ccs811.getTVOC();
+           uint16_t eco2 = ccs811.geteCO2();
+       } 
+    } 
+   ...   
+}
+```
 
 The wiring connection of sensors to WeMos board as depicted.
-![Connnect DHT22 and CSS811 to WeMos D1 board](./assets/weather_station_dht22-css811.png) .
+![Connnect DHT22 and CSS811 to WeMos D1 board](./assets/weather_station_dht22-css811.png)
 
 
-Unfortunatelly after updating the code board began to fall into constant reboot with stack trace which was dumping into 
-serial monitor window. I'm going to find the reason of observed problem by debugger but later. To make things forward 
-I tried another CCS811 support library [Arduino library for CSS811 gas sensor] (https://github.com/maarten-pennings/CCS811) .
-
-The interface to basic functional of the gas sensor is the same. Haven't explore the internals thorough enough yet, but it works.
+Unfortunatelly after update the board began to fall into constant reboot with stack trace which was dumping into serial monitor window.
+I'm going to find the reason of observed problem by debugger but later. To make things forward I tried another CCS811 support library
+[Arduino library for CSS811 gas sensor] (https://github.com/maarten-pennings/CCS811) The interface to basic functional of the gas sensor
+is the same. Haven't explore the internals thorough enough yet, but it works.

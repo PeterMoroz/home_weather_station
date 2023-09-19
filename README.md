@@ -81,3 +81,20 @@ Unfortunatelly after update the board began to fall into constant reboot with st
 I'm going to find the reason of observed problem by debugger but later. To make things forward I tried another CCS811 support library
 [Arduino library for CSS811 gas sensor] (https://github.com/maarten-pennings/CCS811) The interface to basic functional of the gas sensor
 is the same. Haven't explore the internals thorough enough yet, but it works.
+
+The sensor is able to operate in 5 different modes. When don't complicate things they are differ by sampling rate. To choose one of them 
+I decided to perform visual analysis of the measurements taken along a week. I made sketch which puts sensor in one of the operation modes, 
+takes measurements with a relevant rate and sends data to a logging server via HTTP. The server puts received data into a DB (CSV-file is 
+enough for such simple purpose). When the data collection is done they could be visualized with a simple script using matplotlib.
+The results is presented in the figures below.
+
+---
+###### sampling interval 60s
+![CO2](./assets/ccs811_data_plots/eCO2_sampling_60s.png) ![TVOC](./assets/ccs811_data_plots/eTVOC_sampling_60s.png)
+---
+###### sampling interval 1s
+![CO2](./assets/ccs811_data_plots/eCO2_sampling_1s.png) ![TVOC](./assets/ccs811_data_plots/eTVOC_sampling_60s.png)
+
+For my point of view the measurements taken with 1s interval and the measurements taken with 60s interval look more or less the same. 
+It looks that in a 4 - 5 days measurements become stable (Still difficult to explain some outstanding peaks). Therefore it doesn't really 
+matter which sampling period to use. However, the air quality can be assessed very aproximately. 

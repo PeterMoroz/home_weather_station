@@ -20,8 +20,8 @@ When the first prototype of monitoring station was ready (see weather station sk
 a little bit my knowledges gained during experiments and make some improvements of the project.
 
 ## DHT22
-To talk and interact with DHT22 sensor I use the library [DHTesp] (https://github.com/beegee-tokyo/DHTesp) .
-It's a fork of [arduino-DHT] (https://github.com/markruys/arduino-DHT) adopted to ESP microcontrollers.
+To talk and interact with DHT22 sensor I use the library [DHTesp](https://github.com/beegee-tokyo/DHTesp).
+It's a fork of [arduino-DHT](https://github.com/markruys/arduino-DHT) adopted to ESP microcontrollers.
 
 An initial schematic to read temperature and humidity with DHT22 sensor is pictured below
 ![Connnect DHT22 to WeMos D1 board](./assets/weather_station_dht22.png)
@@ -74,12 +74,12 @@ void loop() {
 ```
 
 The wiring connection of sensors to WeMos board as depicted.
-![Connnect DHT22 and CSS811 to WeMos D1 board](./assets/weather_station_dht22-css811.png)
+![Connnect DHT22 and CCS811 to WeMos D1 board](./assets/weather_station_dht22-css811.png)
 
 
 Unfortunatelly after update the board began to fall into constant reboot with stack trace which was dumping into serial monitor window.
 I'm going to find the reason of observed problem by debugger but later. To make things forward I tried another CCS811 support library
-[Arduino library for CSS811 gas sensor] (https://github.com/maarten-pennings/CCS811) The interface to basic functional of the gas sensor
+[Arduino library for CCS811 gas sensor](https://github.com/maarten-pennings/CCS811). The interface to basic functional of the gas sensor
 is the same. Haven't explore the internals thorough enough yet, but it works.
 
 The sensor is able to operate in 5 different modes. When don't complicate things they are differ by sampling rate. To choose one of them 
@@ -100,8 +100,8 @@ It looks that in a 4 - 5 days measurements become stable (Still difficult to exp
 matter which sampling period to use. However, the air quality can be assessed very aproximately. 
 
 ## WiFi
-The WiFi support is provided by the core library [ESP8266WiFi library] (https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/readme.html) .
-I've already used it together with HTTP client library [ESP8266HTTPClient] (https://github.com/esp8266/Arduino/tree/master/libraries/ESP8266HTTPClient) . 
+The WiFi support is provided by the core library [ESP8266WiFi library](https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/readme.html).
+I've already used it together with HTTP client library [ESP8266HTTPClient](https://github.com/esp8266/Arduino/tree/master/libraries/ESP8266HTTPClient). 
 Now it's time to a few details.
 The connection to WiFi is initialized by the following
 ```
@@ -109,4 +109,4 @@ WiFi.begin("MY-SSID", "MY-PASSWORD");
 ```
 It's obvious that to change the network (SSID, and/or password) the code have to be recompiled and the binary must be uploaded into Flash memory. 
 Not even worth mentioning that hardcoding credentials in source code it's a security flaw. To make managing of WiFi networks/credentials more flexible 
-I found a relevant library [WiFiManager] (https://github.com/tzapu/WiFiManager) . It is well documented so I don't repeat how to use it.
+I found a relevant library [WiFiManager](https://github.com/tzapu/WiFiManager). It is well documented so I don't repeat how to use it.

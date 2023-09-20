@@ -98,3 +98,15 @@ The results is presented in the figures below.
 For my point of view the measurements taken with 1s interval and the measurements taken with 60s interval look more or less the same. 
 It looks that in a 4 - 5 days measurements become stable (Still difficult to explain some outstanding peaks). Therefore it doesn't really 
 matter which sampling period to use. However, the air quality can be assessed very aproximately. 
+
+## WiFi
+The WiFi support is provided by the core library [ESP8266WiFi library] (https://arduino-esp8266.readthedocs.io/en/latest/esp8266wifi/readme.html) .
+I've already used it together with HTTP client library [ESP8266HTTPClient] (https://github.com/esp8266/Arduino/tree/master/libraries/ESP8266HTTPClient) . 
+Now it's time to a few details.
+The connection to WiFi is initialized by the following
+```
+WiFi.begin("MY-SSID", "MY-PASSWORD");
+```
+It's obvious that to change the network (SSID, and/or password) the code have to be recompiled and the binary must be uploaded into Flash memory. 
+Not even worth mentioning that hardcoding credentials in source code it's a security flaw. To make managing of WiFi networks/credentials more flexible 
+I found a relevant library [WiFiManager] (https://github.com/tzapu/WiFiManager) . It is well documented so I don't repeat how to use it.

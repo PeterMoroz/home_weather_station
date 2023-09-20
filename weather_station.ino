@@ -3,19 +3,22 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 
+#include <WiFiManager.h>
+
 #include "ccs811.h"
 #include "DHTesp.h"
 
 // #define CCS811_SAMPLING_PERIOD 60000
 #define CCS811_SAMPLING_PERIOD 1000
 
-#define SSID ""
-#define PKEY ""
+//#define SSID ""
+//#define PKEY ""
 
 CCS811 ccs811;
 DHTesp dht;
 
 HTTPClient httpClient;
+WiFiManager wifiManager;
 
 
 int dhtSamplingPeriod = 0x7FFFFFFF;
@@ -75,11 +78,13 @@ void setup() {
     Serial.println("CCS811 start failed");
   }
 
-  WiFi.begin(SSID, PKEY);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting to wifi ...");
-  }
+//  WiFi.begin(SSID, PKEY);
+//  while (WiFi.status() != WL_CONNECTED) {
+//    delay(1000);
+//    Serial.println("Connecting to wifi ...");
+//  }
+
+  wifiManager.autoConnect();
 
   Serial.println("Setup complete.");
 }

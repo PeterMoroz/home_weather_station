@@ -110,3 +110,29 @@ WiFi.begin("MY-SSID", "MY-PASSWORD");
 It's obvious that to change the network (SSID, and/or password) the code have to be recompiled and the binary must be uploaded into Flash memory. 
 Not even worth mentioning that hardcoding credentials in source code it's a security flaw. To make managing of WiFi networks/credentials more flexible 
 I found a relevant library [WiFiManager](https://github.com/tzapu/WiFiManager). It is well documented so I don't repeat how to use it.
+
+## Alarm system
+It would be expected that the system which measure the some environmental parameters will alert human in the close nearby when any of the measured 
+parameter exceed safe value. For that purpose I made a simple sound alert system. 
+To produce sound I chose active (the buzzer has a build-in oscillator) magnetic buzzer operating at 3V. The active buzzer generates a tone using an 
+internal oscillator, that creates an alternating voltage signal for the buzzer based on the external DC voltage. Because the oscillator could not be 
+changed, the active buzzer can only play a single tone with a predefined frequency when a constant DC voltage is provided. It's enough for a simple 
+goal - make alert. Also such design solution has an advantage - no needed code to generate square wave. 
+The current consumption of magnetic buzzer is greater than 20 mA. The maximum output current from one GPIO pin of ESP8266 is 12 mA. Therefore it is 
+needed another power supply than digital I/O pin of the microcontroler. The solution is to use transistor and divide between the control signal and 
+the power consumption. I use PN2222 (which is bipolar junction NPN transistor) as low-side transistor to control the buzzer. I chose NPN transistor 
+and low-side configuration because I want that high level on I/O pin will turn sound on and the low level will make buzzer silent.
+When the buzzer is switched off the vibration of the magnetic buzzer can lead to voltage spikes because of the self-induction in the coil. The diode, 
+also called a flyback diode, that is set in parralel to the buzzer provides a safe path for the inductive current so that the voltage does not rise 
+and damage the circuit.
+
+The circuit diagram is depictured below.
+
+--
+![Buzzer connection diagram](./assets/buzzer_connection_diagram.png)
+
+
+The full wiring diagram is shown below.
+
+--
+![Wiring buzzer together with sensors to WeMos D1 board](./assets/weather_station.png)

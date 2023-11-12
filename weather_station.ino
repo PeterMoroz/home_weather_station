@@ -28,15 +28,195 @@ long lastTimeReadTVOC = 0;
 // the type 'TempAndHumidity' defined in DHTesp library
 TempAndHumidity th = { 0.f, 0.f };
 
+///////////////////////////////////////////////////////
+// BuzzerController
+class BuzzerController {
+
+public:
+  explicit BuzzerController(const byte pin);
+
+  void setup();
+  void tick();
+  void setSoundDuration(unsigned v);
+  void setAlarmOn(bool v);
+
+  bool isAlarmOn() const { return alarmOn; }
+
+private:
+  void turnOver();
+  void setSoundOn(bool v);
+  
+private:
+  bool alarmOn = false;
+  bool soundOn = false;
+  const byte buzzerPin = 0xFF;
+  unsigned halfPeriodOfSound = 2000;
+  unsigned long lastTurnTime = 0;  
+};
+
+BuzzerController::BuzzerController(const byte pin)
+  : buzzerPin(pin)
+  {
+  }
+
+void BuzzerController::tick() {
+  if (alarmOn) {
+    if (millis() - lastTurnTime > halfPeriodOfSound) {
+      turnOver();
+    }
+  }
+}
+
+void BuzzerController::setup() {  
+  pinMode(buzzerPin, OUTPUT);
+}
+
+void BuzzerController::setSoundDuration(unsigned v) {
+  halfPeriodOfSound = v / 2;
+}
+
+void BuzzerController::setAlarmOn(bool v) {
+  if (!v) {
+    alarmOn = false;
+    setSoundOn(false);
+  } else {
+    alarmOn = true;
+    setSoundOn(true);
+    lastTurnTime = millis();
+  }
+}
+
+void BuzzerController::turnOver() {
+  if (soundOn)
+    setSoundOn(false);
+  else
+    setSoundOn(true);
+  lastTurnTime = millis();
+}
+
+void BuzzerController::setSoundOn(bool v) {
+  soundOn = v;
+  digitalWrite(buzzerPin, v ? HIGH : LOW);
+}
+
+
+BuzzerController buzzerController(D5);
+
+
+///////////////////////////////////////////////////////
+// AlarmController
+
+/* To accumulate CO2 samples during 15 minutes interval,
+ * and taking into account that sampling period is 1 s 
+ * the required size of buffer is 15 * 60 = 900 
+ */
+#define CO2_SAMPLES_BUFF_SIZE 900
+
+/* The averaging of CO2 samples is performed each 15 min during 8 hours interval,
+ * the required buffer size is (8 * 60) / 15 = 32   
+ */
+#define CO2_AVERAGES_BUFF_SIZE 32
+
+
+class AlarmController {
+  
+public:
+  explicit AlarmController(BuzzerController &aBuzzerController);
+
+  void registerMeasurements(uint16_t tvoc, uint16_t co2);
+
+  void setCO2ExposureThreshold(uint16_t v) {
+    co2ExposureThreshold = v;
+  }
+
+  void setTVOCExposureThreshold(uint16_t v) {
+    tvocExposureThreshold = v;
+  }
+
+private:
+  void processCO2Sample(uint16_t v);
+
+private:
+  BuzzerController& buzzerController;
+  uint16_t co2ExposureThreshold = 2000;
+  uint16_t tvocExposureThreshold = 2500;
+  uint16_t co2SustainedThresholdShort = 30000; // threshold to sustained CO2 value during a short term (15 min)
+  uint16_t co2SustainedThresholdLong = 5000;  // threshold to sustained CO2 value during a long term (8 hr)
+  bool turnOnAlarm = false;
+  uint16_t co2SamplesIdx = 0;
+  uint16_t co2AveragesIdx = 0;
+  uint16_t co2Samples[CO2_SAMPLES_BUFF_SIZE] = { 0 };
+  uint16_t co2Averages[CO2_AVERAGES_BUFF_SIZE] = { 0 };
+};
+
+AlarmController::AlarmController(BuzzerController &aBuzzerController)
+  : buzzerController(aBuzzerController)
+  {
+    
+  }
+
+void AlarmController::registerMeasurements(uint16_t tvoc, uint16_t co2) {
+
+  turnOnAlarm = false;
+
+  processCO2Sample(co2);
+  
+  if ((tvoc >= tvocExposureThreshold || co2 >= co2ExposureThreshold) && !buzzerController.isAlarmOn()) {
+    turnOnAlarm = true;
+  }
+
+  if (turnOnAlarm) {
+    buzzerController.setAlarmOn(true);    
+  } else {
+    if ((tvoc < tvocExposureThreshold && co2 < co2ExposureThreshold) && buzzerController.isAlarmOn()) {
+      buzzerController.setAlarmOn(false);
+    }
+  }
+}
+
+void AlarmController::processCO2Sample(uint16_t v) {
+  co2Samples[co2SamplesIdx] = v;
+  ++co2SamplesIdx;
+  if (co2SamplesIdx == CO2_SAMPLES_BUFF_SIZE) {
+    uint32_t sum = 0;
+    do {
+      co2SamplesIdx--;
+      sum += co2Samples[co2SamplesIdx];
+    } while (co2SamplesIdx != 0);
+    uint32_t avg = sum / CO2_SAMPLES_BUFF_SIZE;
+    if (avg >= co2SustainedThresholdShort) {
+      turnOnAlarm = true;
+    }
+
+    co2Averages[co2AveragesIdx] = static_cast<uint16_t>(avg);
+    ++co2AveragesIdx;
+    if (co2AveragesIdx == CO2_AVERAGES_BUFF_SIZE) {
+      sum = 0;
+      do {
+        co2AveragesIdx--;
+        sum += co2Averages[co2AveragesIdx];        
+      } while (co2AveragesIdx != 0);
+      avg = sum / CO2_AVERAGES_BUFF_SIZE;
+      if (avg >= co2SustainedThresholdLong) {
+        turnOnAlarm = true;
+      }
+    }
+  }
+}
+
+AlarmController alarmController(buzzerController);
+
+
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
 
   // the sensor connected to D0 pin of Wemos D1 board
   // the sensor's model is DHT22
-  dht.setup(D0, DHTesp::DHT22);
-
+  dht.setup(D0, DHTesp::DHT22);  
   dhtSamplingPeriod = dht.getMinimumSamplingPeriod();
+
+  buzzerController.setup();
 
   // enable I2C
   Wire.begin();
@@ -91,6 +271,7 @@ void setup() {
 
 
 void sendAirQualityData(uint16_t eco2, uint16_t etvoc) {
+  // TO DO: replace HTTP with MQTT
   char url[64] = { '\0' };
   sprintf(url, "http://192.168.0.105:5000/ccs811?eco2=%u&etvoc=%u", eco2, etvoc);
   if (WiFi.status() == WL_CONNECTED) {
@@ -112,7 +293,7 @@ void loop() {
     if (!isnan(th.humidity) && !isnan(th.temperature)) {
       ccs811.set_envdata_Celsius_percRH(th.temperature, th.humidity);
 
-      // TO DO: send measurements, using POST
+      // TO DO: send measurements to the control hub via MQTT
       char s[64] = { '\0' };
     }
   }
@@ -125,6 +306,7 @@ void loop() {
     if (errstat == CCS811_ERRSTAT_OK) {
       Serial.printf("CCS811 - eCO2: %u ppm, eTVOC: %u ppb\n", eco2, etvoc);
       sendAirQualityData(eco2, etvoc);
+      alarmController.registerMeasurements(etvoc, eco2);
     } else if (errstat == CCS811_ERRSTAT_OK_NODATA) {
       Serial.println("CCS811 - waiting for new data.");
     } else if (errstat & CCS811_ERRSTAT_I2CFAIL) {
@@ -133,5 +315,6 @@ void loop() {
       Serial.printf("CCS811 - error %04x (%s)\n", errstat, ccs811.errstat_str(errstat));
     }
   }
- 
+
+  buzzerController.tick(); 
 }

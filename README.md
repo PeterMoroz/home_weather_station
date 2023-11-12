@@ -4,6 +4,25 @@ The weather station based on ESP8266 microcontroller (WeMos D1 mini).
 ## description
 The main goal of the project is to make a simple home weather station with additional feature of air-condition monitoring.
 
+The air quality is assessed by measurement of TVOC and CO~2~ (estimated value, not the directly measured. see below):
+
+- **Carbon dioxide** (CO~2~), which is measured in parts per million (ppm). In indoor spaces, harmful CO~2~ levels begin 
+in the 1,000 ppm to 2,000 ppm range, usually due to poor air exchange. Higher CO~2~ levels become increasingly harmful. 
+When CO~2~ levels exceed 40,000 ppm, workers are in immediate harm due to oxygen deprivation.
+
+- **Total volatile organic compounds** (TVOC), which is measured in parts per billion (ppb). TVOC is used to estimate 
+the Total Volatile Organic Compounds (VOC) that are present simultaneously in the air, i.e. the sum of VOCs in 
+the monitored air. TVOCs generally cover a wide range of different organic substances that are often chemically very similar 
+and difficult to distinguish, which has resulted in the development of several different TVOC standards. Detecting TVOC in 
+the 220 ppb to 660 ppb range indicate poor ventilation efficiency. Environment with TVOC readings in the 2,200 ppb 
+to 5,500 ppb range are considered unhealthy and require intense ventilation.
+
+- **eCO~2~** is directly connnected with VOC measurement. eCO~2~ is an estimate of the CO~2~ concentration based on the currently 
+detected VOC concentration. This estimate is based on the assumption that the VOCs produced by humans are proportional to 
+the CO~2~ exhaled. The advantage is that the eCO2 output can then be handled in a similar way to the signal from a standard CO~2~ 
+sensor and the cost of a VOC sensor is lower than that of a CO~2~ sensor operating on the optical principle.
+
+
 ## design notes
 I chose ESP8266 microcontroller because it has support of WiFi "out of the box", resources enough for my needs (at first sight, 
 who knows how the project will grow :) ) and its infrastructure (toolchains, SDK, etc). 
@@ -14,10 +33,9 @@ in range 0 ... 100 %. The accuracy of the sensor is not excellent but enough for
 
 To get metrics of air quality I use CCS811 sensor. It's a gas sensor that can detect a wide range of volatile organic 
 components (VOC). When connected to microcontroller it return a Total Volatile Organic Compound (TVOC) reading 
-and equivalent carbon dioxide reading (eCO2) over I2C.
+and equivalent carbon dioxide reading (eCO~2~) over I2C.
 
-When the first prototype of monitoring station was ready (see weather station sketch) I decided to put in order 
-a little bit my knowledges gained during experiments and make some improvements of the project.
+
 
 ## DHT22
 To talk and interact with DHT22 sensor I use the library [DHTesp](https://github.com/beegee-tokyo/DHTesp).
@@ -136,3 +154,44 @@ The full wiring diagram is shown below.
 
 --
 ![Wiring buzzer together with sensors to WeMos D1 board](./assets/weather_station.png)
+
+#### Buzzer controller
+The trivial example of code which control the buzzer imposes delays of various durations into the main loop. That is innacceptible for the real device 
+because a lot of time sensible events will be processed by the main loop (ex. HTTP-server, MQTT-client and posiible many others as the project will 
+grow). To control the state of buzzer a simple class *BuzzerController* was designed. It provides interface to turn on/off buzzer and set up the 
+duration of emitted sound.
+
+#### Hazard events
+The device should recognize hazard events and emit alarm when detect any of them. For our system let it be such set:
+- a single TVOC reading exceeds a defined threshold
+- a single CO~2~ reading exceeds a defined threshold
+- a sustained CO~2~ reading exceeds a defined threshold for a defined length of time
+
+A sustained value is calculated by Time Weighted Average (TWA) method. TWA takes into consideration not only the numerical level of a particular variable, 
+but also the amount of time spent on it. TWA calculated as (t~1 $\times$ ~v~1~ + t~2 $\times$ ~v~2~ + ... + t~n $\times$ ~v~n~) / (t~1 + t~2 + ... + t~n~) .
+Because the values are sampled with the same time  t~1~ = t~2~ = ... = t~n~ = t the formula above becomes 
+t $\times$ (v~1~ + v~2~ + ... + v~n~) / (t $\times$ n) = (v~1~ + v~2~ + ... + v~n~) / n, i.e. just an averaging the samples during the period n $\times$ t .
+
+**Note:** The idea was seen here [Air quality shield](https://www.ibm.com/docs/en/mwi?topic=shields-air-quality-shield)
+
+The class *AlarmController* is responsible for triggering alarm (a repetitive sound) when any of the monitored parameters (TVOC or CO~2~) exceed the 
+defined threshold. The data samples are sent to the class instance and when any of monitored parameters is too large the alarm is turn on and wise 
+versa - alarm is turn off when all of the parameters are below their thresholds.
+
+The tracking of single readings is trivial, just compare a given value with defined threshold. Things become a little bit complex when it needed to track 
+the sustained value of some monitored parameter. 
+To track a sustained value of CO~2~ the samples are buffered during 15 min (900 s), then averaged and the result is compared with defined (hardcoded) 
+threshold value. The average values are buffered too during 480 min (8 h what is 28800 s) interval. When the interval is passed the values are averaged and 
+compared with threshold value (now another) again. 
+Thus alarm controller have to be able:
+- compare single readings with threshold values and trigger an event when current reading overseeds threshold.
+- bufferize CO~2~ readings during the short interval (hardcoded 15 min) and average them when interval has passed.
+- compare the average value with thresholed value and trigger an event when the average during the short interval overseed threshold.
+- bufferize average values during the long interval (hardcoded 8 h), average them when interval has passed and compare the result with threshold. 
+in case when result overseed threshold the triggering of event is needed.
+
+The CCS811 sensor is queried with 1 s interval. Its readings are send over network and passed to the instance of AlarmController. That object compare them 
+with defined thresholds. The CO~2~ values are buffered and averaged when a short and then long time interval has passed. The average values are compared 
+with defined thresholds too. When any of the threshold is overseeded the alarm is turned on. 
+I don't include into *AlarmController* the measurement of time interval of sampling assuming that sensor's readings arrive every 1 s. The same relates to 
+the maximum size of CO~2~ samples buffers: their sizes depends on the length of averaging interval and assumption that sampling is done with period of 1 s.

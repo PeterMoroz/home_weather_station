@@ -195,3 +195,23 @@ with defined thresholds. The CO<sub>2</sub> values are buffered and averaged whe
 with defined thresholds too. When any of the threshold is overseeded the alarm is turned on. 
 I don't include into *AlarmController* the measurement of time interval of sampling assuming that sensor's readings arrive every 1 s. The same relates to 
 the maximum size of CO<sub>2</sub> samples buffers: their sizes depends on the length of averaging interval and assumption that sampling is done with period of 1 s.
+
+
+## MQTT
+To send data read by sensors required network connection and some protocol to envelope this data into packets to ensure logical grouping and integrity and some 
+application layer protocol to transfer these data. While at the initial stage of experiments (when I need to collect sensor readings over several days) I used 
+HTTP to transfer information to the logging server, this was a temporary solution, because the main purpose of HTTP is still the transfer of hypertext (suddenly), 
+it also works well for REST architectures, but streaming sensor readings is a little different. 
+For the purpose to 
+
+I chose MQTT among variety of IoT protocols due to reasons:
+- publish/subscribe model of communication. This means that the messages' sender doesn't know nothing about receiver(s). Messages are sent to broker which delivers 
+them to recipients interested in receiving this messages. It's flexible and scalable approach, because the publisher (our sending device) communicate to MQTT-broker 
+only. 
+- widely used in IoT applications. This allows to send data to the public services which provide ability of storing, processing or visualizing of it (ex. ThingSpeak).
+
+I didn't made a deep analysis of MQTT library for ESP8266, just took PubSubClient which is commonly known [pubsubclient](https://github.com/knolleary/pubsubclient) .
+For the test purposes I used free public broker (a few links to the list of MQTT brokers for testing are below) and subscriber written on python.
+
+[10 free public MQTT brokers](https://mntolia.com/10-free-public-private-mqtt-brokers-for-testing-prototyping/) 
+[popular MQTT brokers for testing](https://www.support.aceautomation.eu/knowledge-base/list-of-popular-mqtt-brokers-for-testing-and-how-to-connect-to-them/) 

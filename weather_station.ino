@@ -1,7 +1,7 @@
 #include <Wire.h>
 
 #include <ESP8266WiFi.h>
-#include <ESP8266HTTPClient.h>
+#include <PubSubClient.h>
 
 #include <WiFiManager.h>
 
@@ -14,10 +14,20 @@
 //#define SSID ""
 //#define PKEY ""
 
+#define MQTT_BROKER "broker.emqx.io"
+#define MQTT_PORT 1883
+
+#define TEMPERATURE_TOPIC "dht/temperature"
+#define HUMIDITY_TOPIC "dht/humidity"
+#define ECO2_TOPIC "ccs811/eco2"
+#define TVOC_TOPIC "ccs811/tvoc"
+
 CCS811 ccs811;
 DHTesp dht;
 
-HTTPClient httpClient;
+WiFiClient wifiClient;
+PubSubClient mqttClient(wifiClient);
+
 WiFiManager wifiManager;
 
 
@@ -206,6 +216,22 @@ void AlarmController::processCO2Sample(uint16_t v) {
 
 AlarmController alarmController(buzzerController);
 
+void mqttConnectToBroker() {
+  byte mac[6];
+  WiFi.macAddress(mac);
+  char clientId[32];
+  sprintf(clientId, "esp8266-%02d%02d%02d%02d%02d%02d", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+  Serial.print("Connect to MQTT broker...   ");
+
+  if (mqttClient.connect(clientId)) {
+    Serial.println("connected");
+  } else {
+    Serial.print("Failed with state ");
+    Serial.println(mqttClient.state());
+  }
+}
+
 
 void setup() {
   // put your setup code here, to run once:
@@ -265,36 +291,48 @@ void setup() {
 //  }
 
   wifiManager.autoConnect();
+  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
 
   Serial.println("Setup complete.");
 }
 
+void publishTH() {
+  if (mqttClient.connected()) {
+    char str[16];
+    sprintf(str, "%f", th.temperature);
+    mqttClient.publish(TEMPERATURE_TOPIC, str, true);
+    sprintf(str, "%f", th.humidity);
+    mqttClient.publish(HUMIDITY_TOPIC, str, true);
+  }
+}
 
-void sendAirQualityData(uint16_t eco2, uint16_t etvoc) {
-  // TO DO: replace HTTP with MQTT
-  char url[64] = { '\0' };
-  sprintf(url, "http://192.168.0.105:5000/ccs811?eco2=%u&etvoc=%u", eco2, etvoc);
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFiClient wifiClient;
-    HTTPClient httpClient;
-    httpClient.begin(wifiClient, url);
-    int rcode = httpClient.GET();
-    Serial.printf("url: %s\trcode: %d\n", url, rcode);
-    httpClient.end();
+void publishAirQualityData(uint16_t eco2, uint16_t etvoc) {
+  if (mqttClient.connected()) {
+    char str[8];
+    sprintf(str, "%u", eco2);
+    mqttClient.publish(ECO2_TOPIC, str, true);
+    sprintf(str, "%u", etvoc);
+    mqttClient.publish(TVOC_TOPIC, str, true);
   }
 }
 
 void loop() {
-  long currTime = millis();
+
+  if (!mqttClient.connected()) {
+    if (WiFi.status() == WL_CONNECTED) {
+      mqttConnectToBroker();
+    }
+  }
+
+  unsigned long currTime = millis();
+
   if ((currTime - lastTimeReadTH) > dhtSamplingPeriod) {
     lastTimeReadTH = currTime;
     th = dht.getTempAndHumidity();
     Serial.printf("temperature: %.2f celsius degrees, humidity: %.2f %%\n", th.temperature, th.humidity);
     if (!isnan(th.humidity) && !isnan(th.temperature)) {
       ccs811.set_envdata_Celsius_percRH(th.temperature, th.humidity);
-
-      // TO DO: send measurements to the control hub via MQTT
-      char s[64] = { '\0' };
+      publishTH();
     }
   }
 
@@ -305,7 +343,7 @@ void loop() {
 
     if (errstat == CCS811_ERRSTAT_OK) {
       Serial.printf("CCS811 - eCO2: %u ppm, eTVOC: %u ppb\n", eco2, etvoc);
-      sendAirQualityData(eco2, etvoc);
+      publishAirQualityData(eco2, etvoc);
       alarmController.registerMeasurements(etvoc, eco2);
     } else if (errstat == CCS811_ERRSTAT_OK_NODATA) {
       Serial.println("CCS811 - waiting for new data.");

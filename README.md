@@ -213,5 +213,6 @@ only.
 I didn't made a deep analysis of MQTT library for ESP8266, just took PubSubClient which is commonly known [pubsubclient](https://github.com/knolleary/pubsubclient) .
 For the test purposes I used free public broker (a few links to the list of MQTT brokers for testing are below) and subscriber written on python.
 
-[10 free public MQTT brokers](https://mntolia.com/10-free-public-private-mqtt-brokers-for-testing-prototyping/) 
-[popular MQTT brokers for testing](https://www.support.aceautomation.eu/knowledge-base/list-of-popular-mqtt-brokers-for-testing-and-how-to-connect-to-them/) 
+###### MQTT brokers for testing
+- [10 free public MQTT brokers](https://mntolia.com/10-free-public-private-mqtt-brokers-for-testing-prototyping/) 
+- [popular MQTT brokers for testing](https://www.support.aceautomation.eu/knowledge-base/list-of-popular-mqtt-brokers-for-testing-and-how-to-connect-to-them/) 

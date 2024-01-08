@@ -17,10 +17,8 @@
 #define MQTT_BROKER "broker.emqx.io"
 #define MQTT_PORT 1883
 
-#define TEMPERATURE_TOPIC "dht/temperature"
-#define HUMIDITY_TOPIC "dht/humidity"
-#define ECO2_TOPIC "ccs811/eco2"
-#define TVOC_TOPIC "ccs811/tvoc"
+#define ENVIRONMENTAL_TOPIC "environmental"
+#define AIQ_TOPIC "aiq"
 
 CCS811 ccs811;
 DHTesp dht;
@@ -296,23 +294,19 @@ void setup() {
   Serial.println("Setup complete.");
 }
 
-void publishTH() {
+void publishEnvironmentalData() {
   if (mqttClient.connected()) {
-    char str[16];
-    sprintf(str, "%f", th.temperature);
-    mqttClient.publish(TEMPERATURE_TOPIC, str, true);
-    sprintf(str, "%f", th.humidity);
-    mqttClient.publish(HUMIDITY_TOPIC, str, true);
+    char str[48];
+    sprintf(str, "{ \"temperature\": %.2f, \"humidity\": %.2f }", th.temperature, th.humidity);
+    mqttClient.publish(ENVIRONMENTAL_TOPIC, str, true);
   }
 }
 
 void publishAirQualityData(uint16_t eco2, uint16_t etvoc) {
   if (mqttClient.connected()) {
-    char str[8];
-    sprintf(str, "%u", eco2);
-    mqttClient.publish(ECO2_TOPIC, str, true);
-    sprintf(str, "%u", etvoc);
-    mqttClient.publish(TVOC_TOPIC, str, true);
+    char str[32];
+    sprintf(str, "{ \"eCO2\": %u, \"TVOC\": %u }", eco2, etvoc);
+    mqttClient.publish(AIQ_TOPIC, str, true);
   }
 }
 
@@ -332,7 +326,7 @@ void loop() {
     Serial.printf("temperature: %.2f celsius degrees, humidity: %.2f %%\n", th.temperature, th.humidity);
     if (!isnan(th.humidity) && !isnan(th.temperature)) {
       ccs811.set_envdata_Celsius_percRH(th.temperature, th.humidity);
-      publishTH();
+      publishEnvironmentalData();
     }
   }
 

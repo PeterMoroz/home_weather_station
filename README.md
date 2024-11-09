@@ -129,6 +129,117 @@ It's obvious that to change the network (SSID, and/or password) the code have to
 Not even worth mentioning that hardcoding credentials in source code it's a security flaw. To make managing of WiFi networks/credentials more flexible 
 I found a relevant library [WiFiManager](https://github.com/tzapu/WiFiManager). It is well documented so I don't repeat how to use it.
 
+### UPDATE
+Some time later I decided to refuse use WiFi manager library for the reasons below:
+- it has nothing what I can't implement myself keeping the only needed functional
+- its implementation already contains web server which doesn't suit me, because I want to add processing of the 
+http requests I need in a simple and understandable way (without having to understand someone else's code and modify it)
+
+#### WiFi modes
+Device may operate in two WiFi modes:
+- station modem when device connects to known network
+- access point mode when device forms its own WiFi network and enables other WiFi devices connect to that network
+
+#### Captive portal
+One of the main feature of WiFi manager is captive portal and ability to manage WiFi connection(s) - store connection settings in NVRAM and connect 
+automatically to the last known WiFi network.
+The main idea of **captive portal** is to give user opportunity to connect to device when that device is not connected to any WiFi network and setup 
+connection with any neighbour WiFi network.
+WiFi connection parameters are stored in NVRAM and read by device at each start. Then device make attempt to connect to WiFi network using parameters
+were read from NVRAM. The atempt of connect is made with station mode (assumed that we are connecting as wireless client to known network). If connection 
+failed, device switched to access point mode so that user is abple to connect to device with web browser and setup WiFi connection. When device started 
+the first time it knows nothing about WiFi networks nearby, so connection parameters are not valid and connection in station mode is failed. When device 
+switched to access point mode and receive http-requst to get default page, it will respond with captive portal page. The page contains list of networks 
+available nearby so that user choose one of them and field to input password. After the input data confirmed by user they are stored in NVRAM and after 
+rebooting device will try to connect to WiFi network using new connection params (SSID of network and password).
+
+#### WiFi connection
+When device started it reads configuration from NVRAM, configuration comprises WiFi connection parameters among others. Initially device make attempt to 
+connect to last known network using station mode
+```
+  WiFi.mode(WIFI_STA);
+  delay(200);
+  WiFi.begin(settings.ssid, settings.password);
+  bool connected = checkWiFiConnection();
+```
+The function `checkWiFiConnection` check status of connection few times with some time interval and returns immediatelly when connection is up. When check 
+of connection failed it means either that saved network is not available anymore or device started first time and connection parameters are not valid. In 
+that case device will setup WiFi in the soft access point mode. There are few versions (overloads in terms of C++) of `softAP` method, but the simplest one 
+just take network SSID as argument and setup an open WiFi network.
+```
+    WiFi.mode(WIFI_AP);
+    if (!WiFi.softAP(DEVICE_NAME)) {
+      Serial.println("Could not setup soft AP!");
+      while (1) ;
+    }
+```
+
+## Web server
+No matter device operating in station mode or access point mode, it has to server http-requests (to show captive portal, page with sensors readings, etc).
+To made web-server I chose [ESPAsyncWebServer](https://github.com/me-no-dev/ESPAsyncWebServer) library. It documented well and used in many IoT projects. 
+Asynchronous web server has many advantages over  synchronous one, the one of them is that web server which processes request in asynchronous fashion 
+doesn't blocking the main loop. The ESPAsyncWebServer requires [ESPAsynTCP](https://github.com/me-no-dev/ESPAsyncTCP) as dependency.
+Web-server will listen standard HTTP-port 80.
+```
+#include <ESPAsyncTCP.h>
+#include <ESPAsyncWebSrv.h>
+...
+AsyncWebServer webServer(80);
+```
+When WiFi connection setup is done, the code of web server initialization run.
+```
+  initRequestHandlers();
+  webServer.begin();
+```
+The code of the function `initRequestHandlers` is pretty long so I don't put the full content of the function here, just explain what it does because 
+it's important. As we may guess from its name the function make setup how different http-requests are handled by web-server. Depending on type of 
+http-request (GET or POST, there are some others but we use only these two) and URI the different ways of processing may be requered. Each request 
+handler is binded to URI and request type and represents lambda function (in terms of C++). When device operating in access point WiFi mode or station 
+mode it uses a few different sets of handlers. For example, the default GET request will be redirected to the main page with sensors data when device 
+is connected to WiFi network, but the same request will be redirected to the captive portal page. 
+```
+  if (wifiMode == WIFI_STA) {
+    
+    webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+      request->send(SPIFFS, "/main.html", "text/html");
+    });
+    ...
+    // some others handlers
+    ...
+  } else if (wifiMode == WIFI_AP) {
+   
+    webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+      request->send(SPIFFS, "/wifi_setup.html", "text/html");
+    });
+    ...
+    // some others handlers
+    ...
+  }
+```
+
+## DNS
+DNS eliminate the need to memorize IP address of device and enable to connect to device using easy to remember domain name. Indeed user don't know 
+the IP address of device after it started and connected to WiFi network or when it run in access point mode and establishes its own WiFi network. 
+mDNS is a protocol that allows to make the resolution of locally defined names to IPs without the need for dedicated DNS server. The protocol works 
+over multicast UDP. But in order to success name resolution, the client connecting to device also needs to support mDNS (depending on the OS which 
+runs client it may be Bounjour service in case of Windows OS and Avahi service in case of Linux).
+To start the mDNS resolver its needed to call the `begin` method on an extern variable `MDNS`. This variable is an object of `MDNSResponder`, which 
+makes available all the functionality needed for the resolution of addresses. The `begin` method starts the mDNS responder for the given host name 
+(in our case device will be accessible via "esp8266.local").
+
+```
+#include <ESP8266mDNS.h>
+...
+// in setup() function
+  if (!MDNS.begin("esp8266")) {
+    Serial.println("Could not start MDNS responder!\n");
+  }
+  
+// in loop() function
+  MDNS.update();
+```
+
+
 ## Alarm system
 It would be expected that the system which measure the some environmental parameters will alert human in the close nearby when any of the measured 
 parameter exceed safe value. For that purpose I made a simple sound alert system. 

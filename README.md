@@ -137,7 +137,7 @@ http requests I need in a simple and understandable way (without having to under
 
 #### WiFi modes
 Device may operate in two WiFi modes:
-- station modem when device connects to known network
+- station mode when device connects to known network
 - access point mode when device forms its own WiFi network and enables other WiFi devices connect to that network
 
 #### Captive portal
@@ -309,21 +309,66 @@ the maximum size of CO<sub>2</sub> samples buffers: their sizes depends on the l
 
 
 ## MQTT
-To send data read by sensors required network connection and some protocol to envelope this data into packets to ensure logical grouping and integrity and some 
-application layer protocol to transfer these data. While at the initial stage of experiments (when I need to collect sensor readings over several days) I used 
-HTTP to transfer information to the logging server, this was a temporary solution, because the main purpose of HTTP is still the transfer of hypertext (suddenly), 
-it also works well for REST architectures, but streaming sensor readings is a little different. 
-For the purpose to 
+MQTT is widelly adopted in IoT. It is based on the model publisher-subscriber. Initially it was developed to maintain communication in networks with limited bandwidth 
+and unpredictable reliability. 
+Further exploitation of this protocol in harsh environments has proven its successful applicability for streaming data between devices with limited computing power 
+and/or battery life, as well as in networks with expensive or low bandwidth, unpredictable stability, or high latency. Therefore MQTT is perfect transport in the IoT 
+world. MQTT use TCP/IP as underlying transport but there are implementations based on Bluetooth, ZigBee, UDP and others.
 
-I chose MQTT among variety of IoT protocols due to reasons:
-- publish/subscribe model of communication. This means that the messages' sender doesn't know nothing about receiver(s). Messages are sent to broker which delivers 
-them to recipients interested in receiving this messages. It's flexible and scalable approach, because the publisher (our sending device) communicate to MQTT-broker 
-only. 
-- widely used in IoT applications. This allows to send data to the public services which provide ability of storing, processing or visualizing of it (ex. ThingSpeak).
 
-I didn't made a deep analysis of MQTT library for ESP8266, just took PubSubClient which is commonly known [pubsubclient](https://github.com/knolleary/pubsubclient) .
-For the test purposes I used free public broker (a few links to the list of MQTT brokers for testing are below) and subscriber written on python.
+For now device is equipped with 2 sensors therefore there are should be 2 topics to publish their readings. Each topic consists of root part (common for all the topics)
+ and the part specific for each sensor (*th* - temperature and humidity, *aiq* - air quality):
+ - `<root_prefix>/th` topic to publish temparature and humuduty values
+ - `<root_prefix>/aiq` topic to publish TVOC and CO2 values
 
-###### MQTT brokers for testing
-- [10 free public MQTT brokers](https://mntolia.com/10-free-public-private-mqtt-brokers-for-testing-prototyping/) 
-- [popular MQTT brokers for testing](https://www.support.aceautomation.eu/knowledge-base/list-of-popular-mqtt-brokers-for-testing-and-how-to-connect-to-them/) 
+The topics are kept in global variables, the values of them are used when data published.
+```
+char th_topic[MAX_MQTT_TOPIC_LENGTH];
+char aiq_topic[MAX_MQTT_TOPIC_LENGTH];
+```
+
+The root part is defined by user and stored in NVRAM. Because topics have the part which may be changed I assumed that it would be reasonable to make a function that 
+forms topics so as not to do this every time the data is published. The function `mqttSetupTopics` builds full topics. It is invoked when device started, after 
+settings have read and when root topic has changed by user request.
+
+To communicate with MQTT-broker I use (Arduino Client for MQTT)[https://github.com/knolleary/pubsubclient] which is compatible with ESP8266 hardware. The library meets
+my needs and its limitations at this stage of the project are not essential.
+For now only publishing functional is required. The data are read from sensors with fixed period and published into corresponded topics. The functions 
+`publishEnvironmentalData` and `publishAirQualityData` do it. Their code is similar so I put listing only one of them.
+
+```
+void publishEnvironmentalData(float temperature, float humidity) {
+  if (mqttClient.connected()) {
+    char str[48];
+    snprintf(str, sizeof(str) - 1, "{ \"temperature\": %.2f, \"humidity\": %.2f }", temperature, humidity);
+    mqttClient.publish(th_topic, str, true);
+  }
+}
+```
+
+The object `mqttClient` is an instance of `PubSubClient` which declared in global scope. Its constructor requires WiFiClient-object. Every iteration of the main loop
+ checks if connection to broker is alive and if not try to establish it. The check is needed because connection may be lost for some reason. Also when MQTT-settings
+ changed the explicit disconnect is initiated, that way at the next iteration of the main loop the mqtt client will make attempt to connect with new settings.
+
+```
+#include <PubSubClient.h>
+...
+PubSubClient mqttClient(wifiClient);
+...
+
+void loop() {
+
+  if (!mqttClient.connected()) {
+    mqttConnect();
+  }
+  ...
+
+  mqttClient.loop();
+  ...
+  // read sensors, publish readings
+}
+```
+
+To check that publish of data works as expected (without a subscriber) I used [MQTT Explorer](http://mqtt-explorer.com/) and free public MQTT brokers:
+ - Mosquitto test server which part of [Mosquitto Project](https://mosquitto.org/)
+ - EMQX [Free public MQTT broker](https://www.emqx.com/en/mqtt/public-mqtt5-broker)

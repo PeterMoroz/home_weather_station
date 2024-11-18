@@ -186,10 +186,9 @@ struct {
 // MQTT
 PubSubClient mqttClient(wifiClient);
 
-char temperature_topic[MAX_MQTT_TOPIC_LENGTH];
-char humidity_topic[MAX_MQTT_TOPIC_LENGTH];
-char co2_topic[MAX_MQTT_TOPIC_LENGTH];
-char tvoc_topic[MAX_MQTT_TOPIC_LENGTH];
+char th_topic[MAX_MQTT_TOPIC_LENGTH];
+char aiq_topic[MAX_MQTT_TOPIC_LENGTH];
+
 
 bool mqttConnect(const char *user, const char *pass, const char *host, const uint16_t port) {
 
@@ -248,10 +247,8 @@ bool mqttConnect() {
 }
 
 void mqttSetupTopics() {
-  sprintf(temperature_topic, "%s/temperature", settings.mqtt_root_topic);
-  sprintf(humidity_topic, "%s/humidity", settings.mqtt_root_topic);
-  sprintf(co2_topic, "%s/co2", settings.mqtt_root_topic);
-  sprintf(tvoc_topic, "%s/tvoc", settings.mqtt_root_topic);
+  sprintf(th_topic, "%s/th", settings.mqtt_root_topic);
+  sprintf(aiq_topic, "%s/aiq", settings.mqtt_root_topic);
 }
 
 ///////////////////////////////////////////////////////
@@ -298,7 +295,7 @@ void initRequestHandlers() {
         Serial.print(", value ");
         Serial.println(p->value());
         
-        if (p->isPost()) {       
+        if (p->isPost()) {
           if (!strcmp(p->name().c_str(), "mqtt-user")) {
             p->value().toCharArray(user, MQTT_USER_LENGTH);
           }
@@ -336,7 +333,7 @@ void initRequestHandlers() {
         strncpy(settings.mqtt_root_topic, topic, MQTT_ROOT_TOPIC_LENGTH);
 
         mqttSetupTopics();
-                
+
         mqttClient.disconnect();
         request->send(SPIFFS, "/mqtt_setup_complete.html", "text/html");
       } else {
@@ -704,22 +701,19 @@ void setup() {
 }
 
 void publishEnvironmentalData(float temperature, float humidity) {
+    // TO DO: to refresh in mind  - why we need to check that root topic is not empty.
   if (mqttClient.connected() && strlen(settings.mqtt_root_topic) != 0) {
-    char str[8];
-    sprintf(str, "%.2f", temperature);
-    mqttClient.publish(temperature_topic, str, true);
-    sprintf(str, "%.2f", humidity);
-    mqttClient.publish(humidity_topic, str, true);
+    char str[48];
+    snprintf(str, sizeof(str) - 1, "{ \"temperature\": %.2f, \"humidity\": %.2f }", temperature, humidity);
+    mqttClient.publish(th_topic, str, true);
   }
 }
 
 void publishAirQualityData(uint16_t eco2, uint16_t etvoc) {
   if (mqttClient.connected()) {
-    char str[8];
-    sprintf(str, "%u", eco2);
-    mqttClient.publish(co2_topic, str, true);
-    sprintf(str, "%u", etvoc);
-    mqttClient.publish(tvoc_topic, str, true);
+    char str[32];
+    snprintf(str, sizeof(str) - 1, "{ \"CO2\": %u, \"eTVOC\": %u }", eco2, etvoc);
+    mqttClient.publish(aiq_topic, str, true);
   }
 }
 
@@ -749,7 +743,7 @@ void loop() {
     }
   }
 
-  if ((currTime - lastTimeReadTVOC) > CCS811_SAMPLING_PERIOD) {    
+  if ((currTime - lastTimeReadTVOC) > CCS811_SAMPLING_PERIOD) {
     uint16_t eco2, etvoc, errstat, raw;
     ccs811.read(&eco2, &etvoc, &errstat, &raw);
     lastTimeReadTVOC = currTime;

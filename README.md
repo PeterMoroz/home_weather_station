@@ -331,7 +331,7 @@ The root part is defined by user and stored in NVRAM. Because topics have the pa
 forms topics so as not to do this every time the data is published. The function `mqttSetupTopics` builds full topics. It is invoked when device started, after 
 settings have read and when root topic has changed by user request.
 
-To communicate with MQTT-broker I use (Arduino Client for MQTT)[https://github.com/knolleary/pubsubclient] which is compatible with ESP8266 hardware. The library meets
+To communicate with MQTT-broker I use [Arduino Client for MQTT](https://github.com/knolleary/pubsubclient) which is compatible with ESP8266 hardware. The library meets
 my needs and its limitations at this stage of the project are not essential.
 For now only publishing functional is required. The data are read from sensors with fixed period and published into corresponded topics. The functions 
 `publishEnvironmentalData` and `publishAirQualityData` do it. Their code is similar so I put listing only one of them.
